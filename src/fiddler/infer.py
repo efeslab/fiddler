@@ -49,19 +49,7 @@ class FiddlerMixtral():
         n_expert_on_gpu = self.calc_n_expert_on_gpu()
         print(f'Number of experts on GPU: {n_expert_on_gpu}/{self.n_layer * self.n_expert}')
 
-        # prof_data = np.zeros((self.n_layer, self.n_expert), dtype=int)
-        # with open('cnt-expert.txt', 'r') as f:
-        #     for line in f:
-        #         i_layer, i_expert, cnt = map(int, line.strip().split('-'))
-        #         prof_data[i_layer, i_expert] = cnt 
-        # popular_experts = np.argsort(prof_data.flatten())[::-1]
-        # for i in range(n_expert_on_gpu):
-        #     i_layer, i_expert = divmod(popular_experts[i], self.n_expert)
-        #     self.expert_loc[i_layer, i_expert] = 1
-        for i_layer in range(self.n_layer):
-            for i_expert in range(self.n_expert):
-                if i_layer + i_expert * self.n_layer < n_expert_on_gpu:
-                    self.expert_loc[i_layer, i_expert] = 1
+        self.set_expert_loc(n_expert_on_gpu)
         print(self.expert_loc)
     
         self.bring_expert_to_gpu()
@@ -80,6 +68,19 @@ class FiddlerMixtral():
             self.model.layers[i].post_attention_layernorm.to(self.dev)
             # only model.layers[i].block_sparse_moe.experts is on CPU
     
+    def set_expert_loc(self, n_expert_on_gpu, popular_experts=None):
+        """Set the location of experts"""
+        if popular_experts is None:
+            # list of (i_layer, i_expert) in the order of popularity
+            # determined based on profile
+            popular_experts = [
+                (9, 5), (11, 2), (10, 4), (28, 0), (13, 1), (17, 7), (12, 1), (8, 6), (16, 1), (9, 0), (14, 5), (19, 5), (26, 2), (30, 7), (7, 1), (3, 7), (23, 4), (22, 1), (29, 3), (1, 5), (13, 0), (5, 1), (18, 0), (4, 7), (10, 3), (1, 2), (3, 0), (8, 3), (11, 0), (11, 5), (11, 1), (31, 4), (21, 0), (25, 1), (15, 5), (22, 4), (27, 5), (16, 7), (15, 1), (13, 2), (15, 4), (21, 1), (27, 7), (9, 7), (7, 4), (31, 5), (2, 1), (11, 6), (12, 3), (2, 4), (24, 2), (28, 2), (0, 2), (30, 2), (6, 0), (6, 7), (15, 6), (6, 2), (14, 2), (2, 0), (17, 2), (19, 2), (24, 0), (10, 0), (19, 4), (1, 4), (26, 3), (31, 7), (17, 6), (25, 3), (12, 6), (0, 0), (26, 0), (29, 7), (27, 2), (19, 6), (5, 0), (18, 2), (20, 1), (12, 4), (17, 5), (5, 4), (30, 6), (20, 5), (24, 6), (25, 2), (28, 4), (4, 6), (7, 2), (20, 3), (23, 2), (8, 4), (30, 0), (3, 4), (12, 5), (23, 7), (1, 7), (22, 5), (18, 4), (31, 0), (17, 0), (0, 5), (14, 6), (0, 3), (15, 7), (5, 6), (4, 4), (24, 7), (31, 1), (27, 6), (22, 2), (14, 1), (1, 0), (29, 1), (21, 3), (25, 7), (22, 3), (7, 3), (2, 6), (29, 5), (28, 3), (6, 6), (7, 5), (5, 7), (8, 5), (20, 4), (21, 5), (18, 7), (27, 0), (16, 0), (24, 5), (12, 2), (2, 2), (24, 3), (4, 1), (29, 0), (3, 1), (21, 6), (10, 2), (20, 7), (19, 0), (26, 7), (20, 6), (23, 3), (4, 3), (30, 1), (1, 6), (29, 2), (30, 3), (0, 6), (8, 1), (25, 6), (29, 4), (16, 2), (23, 1), (26, 1), (26, 6), (16, 4), (2, 5), (0, 4), (7, 6), (14, 4), (3, 6), (20, 0), (18, 3), (4, 5), (17, 4), (0, 1), (16, 5), (19, 3), (23, 0), (30, 4), (20, 2), (13, 6), (18, 6), (15, 2), (3, 5), (22, 0), (10, 1), (9, 6), (10, 5), (25, 4), (9, 2), (18, 1), (6, 4), (4, 2), (23, 5), (6, 5), (21, 2), (5, 5), (6, 1), (26, 5), (12, 0), (25, 0), (4, 0), (14, 0), (16, 6), (31, 2), (8, 0), (21, 7), (14, 3), (31, 6), (28, 1), (5, 3), (23, 6), (6, 3), (18, 5), (25, 5), (27, 1), (11, 7), (11, 4), (24, 1), (0, 7), (8, 7), (13, 3), (21, 4), (27, 4), (13, 7), (3, 2), (9, 1), (2, 7), (7, 0), (2, 3), (28, 5), (27, 3), (15, 0), (24, 4), (5, 2), (22, 6), (3, 3), (28, 6), (14, 7), (13, 4), (28, 7), (22, 7), (13, 5), (19, 1), (26, 4), (1, 1), (17, 1), (16, 3), (10, 7), (29, 6), (19, 7), (31, 3), (7, 7), (1, 3), (8, 2), (9, 4), (17, 3), (30, 5), (15, 3), (9, 3), (10, 6), (12, 7), (11, 3),
+            ]
+        
+        for i in range(n_expert_on_gpu):
+            i_layer, i_expert = popular_experts[i]
+            self.expert_loc[i_layer, i_expert] = 1
+
     def bring_expert_to_gpu(self):
         """Bring part of expert layers to GPU"""
         for i in range(self.n_layer):
@@ -118,7 +119,7 @@ class FiddlerMixtral():
         prefill_time, decode_time = 0, 0
         for i_token in range(output_token):
             # tick = time.time()
-            print(self.tokenizer.decode(input_ids[0, :]))
+            # print(self.tokenizer.decode(input_ids[0, :]))
             logits = self.mixtral_forward(
                 input_ids, 
                 position_ids,
