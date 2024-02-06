@@ -14,7 +14,7 @@ import transformers
 
 from torch.autograd import profiler
 
-class MixtralWithCPUOffload():
+class FiddlerMixtral():
     def __init__(self, args):
         self.dtype = torch.bfloat16
         self.dev = torch.device('cuda:0')
@@ -49,20 +49,19 @@ class MixtralWithCPUOffload():
         n_expert_on_gpu = self.calc_n_expert_on_gpu()
         print(f'Number of experts on GPU: {n_expert_on_gpu}/{self.n_layer * self.n_expert}')
 
-        prof_data = np.zeros((self.n_layer, self.n_expert), dtype=int)
-        with open('cnt-expert.txt', 'r') as f:
-            for line in f:
-                i_layer, i_expert, cnt = map(int, line.strip().split('-'))
-                prof_data[i_layer, i_expert] = cnt 
-        popular_experts = np.argsort(prof_data.flatten())[::-1]
-        for i in range(n_expert_on_gpu):
-            i_layer, i_expert = divmod(popular_experts[i], self.n_expert)
-            self.expert_loc[i_layer, i_expert] = 1
-        # for i_layer in range(self.n_layer):
-        #     for i_expert in range(self.n_expert):
-        #         # if i_layer + i_expert * self.n_layer < n_expert_on_gpu:
-        #         if i_expert == 1:
-        #             self.expert_loc[i_layer, i_expert] = 1
+        # prof_data = np.zeros((self.n_layer, self.n_expert), dtype=int)
+        # with open('cnt-expert.txt', 'r') as f:
+        #     for line in f:
+        #         i_layer, i_expert, cnt = map(int, line.strip().split('-'))
+        #         prof_data[i_layer, i_expert] = cnt 
+        # popular_experts = np.argsort(prof_data.flatten())[::-1]
+        # for i in range(n_expert_on_gpu):
+        #     i_layer, i_expert = divmod(popular_experts[i], self.n_expert)
+        #     self.expert_loc[i_layer, i_expert] = 1
+        for i_layer in range(self.n_layer):
+            for i_expert in range(self.n_expert):
+                if i_layer + i_expert * self.n_layer < n_expert_on_gpu:
+                    self.expert_loc[i_layer, i_expert] = 1
         print(self.expert_loc)
     
         self.bring_expert_to_gpu()
@@ -116,6 +115,7 @@ class MixtralWithCPUOffload():
         
         tick = time.time()
         is_decode = False 
+        prefill_time, decode_time = 0, 0
         for i_token in range(output_token):
             # tick = time.time()
             print(self.tokenizer.decode(input_ids[0, :]))
@@ -133,9 +133,12 @@ class MixtralWithCPUOffload():
             input_ids = output[:, -1].unsqueeze(0).to(self.dev)
             position_ids = torch.arange(self.past_key_values_length, self.past_key_values_length + 1, dtype=torch.long, device=self.dev)
             position_ids = position_ids.unsqueeze(0).view(-1, 1)
+            if not is_decode:
+                prefill_time += time.time() - tick
+                tick = time.time()
             is_decode = True
-        print(f'Total time: {time.time() - tick}s')
-        print(f'Expert hit ratio: {self.cnt_expert_hit / self.cnt_expert_all * 100:.2f}%')
+        decode_time = time.time() - tick
+        return prefill_time, decode_time, self.cnt_expert_hit / self.cnt_expert_all
     
     def tokenize(self, text):
         encodings = self.tokenizer(text, return_tensors="pt")
@@ -331,146 +334,7 @@ class MixtralWithCPUOffload():
     
     def run_expert_at_cpu(self, i_layer, i_expert, inps, routing_weights):
         """Run the expert at CPU"""
-        return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](inps, routing_weights)
-
-    def microbench(self):
-        """Microbenchmarking for CPU offloading"""
-        # 1: copy 1 expert from GPU to CPU
-        sum_time = 0
-        expert_placeholder = copy.deepcopy(
-            self.model.layers[0].block_sparse_moe.experts[0]
-        ).to('cpu')
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to(self.dev)
-            torch.cuda.synchronize()
-            tick = time.time()
-            expert_placeholder.load_state_dict(
-                self.model.layers[i].block_sparse_moe.experts[0].state_dict()
-            )
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-        print(f'1) Weight, GPU -> CPU: {sum_time / 32 * 1000} ms')
-
-        # 2: copy 1 expert from CPU to GPU
-        sum_time = 0
-        expert_placeholder = copy.deepcopy(
-            self.model.layers[0].block_sparse_moe.experts[0]
-        ).to(self.dev)
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-            torch.cuda.synchronize()
-            tick = time.time()
-            expert_placeholder.load_state_dict(
-                self.model.layers[i].block_sparse_moe.experts[0].state_dict()
-            )
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-        print(f'2) Weight, CPU -> GPU: {sum_time / 32 * 1000} ms')
-
-        # 3: copy 1 activation from GPU to CPU
-        sum_time = 0
-        for i in range(32):
-            inps = torch.randn((1, 4096), dtype=self.dtype, device=self.dev)
-            torch.cuda.synchronize()
-            tick = time.time()
-            inps = inps.to('cpu')
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            del inps 
-        print(f'3) Activation, GPU -> CPU: {sum_time / 32 * 1000} ms')
-
-        # 4: copy 1 activation from CPU to GPU
-        sum_time = 0
-        for i in range(32):
-            inps = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            torch.cuda.synchronize()
-            tick = time.time()
-            inps = inps.to(self.dev)
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            del inps 
-        print(f'4) Activation, CPU -> GPU: {sum_time / 32 * 1000} ms')
-
-        # 5: execute 1 expert at GPU
-        sum_time = 0
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to(self.dev)
-            inps = torch.randn((1, 4096), dtype=self.dtype, device=self.dev)
-            weights = torch.ones((1, 1), dtype=self.dtype, device=self.dev)
-            torch.cuda.synchronize()
-            tick = time.time()
-            inps = self.model.layers[i].block_sparse_moe.experts[0](inps, weights)
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-            del inps, weights
-        print(f'5) Execution, GPU: {sum_time / 32 * 1000} ms')
-
-        # 6: execute 1 expert at CPU
-        sum_time = 0
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-            inps = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            weights = torch.ones((1, 1), dtype=self.dtype, device='cpu')
-            torch.cuda.synchronize()
-            tick = time.time()
-            inps = self.run_expert_at_cpu(i, 0, inps, weights)
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            del inps, weights
-        print(f'6) Execution, CPU (1 expert): {sum_time / 32 * 1000} ms')
-
-        # 7: execute 2 experts at CPU sequentially
-        sum_time = 0
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-            self.model.layers[i].block_sparse_moe.experts[1].to('cpu')
-            inps0 = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            inps1 = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            weights0 = torch.ones((1, 1), dtype=self.dtype, device='cpu')
-            weights1 = torch.ones((1, 1), dtype=self.dtype, device='cpu')
-            torch.cuda.synchronize()
-            tick = time.time()
-            inps0 = self.run_expert_at_cpu(i, 0, inps0, weights0)
-            inps1 = self.run_expert_at_cpu(i, 1, inps1, weights1)
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            del inps0, inps1, weights0, weights1
-        print(f'7) Execution, CPU (2 experts, sequential): {sum_time / 32 * 1000} ms')
-
-        # 8: execute 2 experts at CPU with multithreading
-        sum_time = 0
-        for i in range(32):
-            self.model.layers[i].block_sparse_moe.experts[0].to('cpu')
-            self.model.layers[i].block_sparse_moe.experts[1].to('cpu')
-            inps0 = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            inps1 = torch.randn((1, 4096), dtype=self.dtype, device='cpu')
-            weights0 = torch.ones((1, 1), dtype=self.dtype, device='cpu')
-            weights1 = torch.ones((1, 1), dtype=self.dtype, device='cpu')
-            torch.cuda.synchronize()
-            tick = time.time()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future_0 = executor.submit(
-                    self.run_expert_at_cpu,
-                    i, # layer id
-                    0, # expert id
-                    inps0, 
-                    weights0,
-                )
-                future_1 = executor.submit(
-                    self.run_expert_at_cpu,
-                    i, # layer id
-                    1, # expert id
-                    inps1, 
-                    weights1,
-                )
-            inps0 = future_0.result()
-            inps1 = future_1.result()
-            torch.cuda.synchronize()
-            sum_time += time.time() - tick
-            del inps0, inps1, weights0, weights1
-        print(f'8) Execution, CPU (2 experts, parallel): {sum_time / 32 * 1000} ms')
+        return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](inps, routing_weights)        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -493,15 +357,15 @@ if __name__ == '__main__':
         '--n-token', type=int, default=20,
         help='Number of tokens to generate.',
     )
-    parser.add_argument(
-        '--microbench', action='store_true',
-        help='Run microbenchmark.',
-    )
+    # parser.add_argument(
+    #     '--microbench', action='store_true',
+    #     help='Run microbenchmark.',
+    # )
 
     args = parser.parse_args() 
 
-    model = MixtralWithCPUOffload(args)
-    if args.microbench:
-        model.microbench()
-        exit()
+    model = FiddlerMixtral(args)
+    # if args.microbench:
+    #     model.microbench()
+    #     exit()
     model.generate(args.input, output_token=args.n_token)
