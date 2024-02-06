@@ -46,18 +46,19 @@ if __name__ == "__main__":
     random.seed(0)
     random.shuffle(texts)
     model = FiddlerMixtral(args)
-    n_sample = 100
+    n_sample = 10
 
     for input_token in [16, 32, 64, 128]:
         for output_token in [16, 32, 64, 128, 256, 512]:
             idx_text = 0
             prefill_time_sum, decode_time_sum, hit_rate_sum = 0, 0, 0
             for _ in range(n_sample):
-                text = texts[idx_text]
-                idx_text += 1
-                if len(text.split()) < input_token:
-                    # not enough input length
-                    continue
+                while True: 
+                    text = texts[idx_text]
+                    idx_text += 1
+                    if len(text.split()) >= input_token:
+                        # enough input length
+                        break
                 prefill_time, decode_time, hit_rate = model.generate(
                     text, 
                     output_token=output_token, 

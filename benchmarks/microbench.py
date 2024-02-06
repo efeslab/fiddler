@@ -180,5 +180,7 @@ if __name__ == "__main__":
     print(f'2) Weight copy, GPU -> CPU: {weight_copy(model, from_cpu=False) * 1000} ms')
     print(f'3) Copy activation, CPU -> GPU: {copy_activation(model, from_cpu=True) * 1000} ms')
     print(f'4) Copy activation, GPU -> CPU: {copy_activation(model, from_cpu=False) * 1000} ms')
-    print(f'5) Execution, GPU: {expert_gpu(model) * 1000} ms')
-    print(f'6) Execution, CPU: {expert_cpu(model) * 1000} ms')
+    for i in range(1, 10 + 1):
+        print(f'5) Execution, GPU batch={i}: {expert_gpu(model, batch_size=i) * 1000} ms')
+    for i in range(1, 10 + 1):
+        print(f'6) Execution, CPU batch={i}: {expert_cpu(model, batch_size=i) * 1000} ms')
