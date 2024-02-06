@@ -4,6 +4,7 @@ import copy
 import time
 import random
 import concurrent.futures
+import threading
 
 import numpy as np
 import tqdm
@@ -38,6 +39,10 @@ class FiddlerMixtral():
 
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
+
+        # TODO: find this value based on device config 
+        self.latency_cpu = 7
+        self.latency_gpu = 70
 
         self.cnt_expert_hit = 0
         self.cnt_expert_all = 0
@@ -216,17 +221,14 @@ class FiddlerMixtral():
                 idxs, top_2s = [], []
                 cost_per_expert = np.zeros((len(experts), 2), dtype=float) # 0: CPU, 1: GPU
 
-                # TODO: find this value based on device config 
-                cost_at_cpu = 7
-                cost_at_gpu = 70
                 for i_expert in range(len(experts)):
                     idx, top_2 = torch.where(expert_mask[i_expert])
                     idxs.append(idx)
                     top_2s.append(top_2)
                     # expected latency at CPU: number of token * cost_at_cpu
                     # expected latency at GPU: cost_at_gpu (constant)
-                    cost_per_expert[i_expert, 0] = top_2.shape[0] * cost_at_cpu
-                    cost_per_expert[i_expert, 1] = cost_at_gpu
+                    cost_per_expert[i_expert, 0] = top_2.shape[0] * self.latency_cpu
+                    cost_per_expert[i_expert, 1] = self.latency_gpu
                     if self.is_expert_in_gpu(i_layer, i_expert):
                         # if the expert is in GPU, the latency at GPU is approximately 0
                         cost_per_expert[i_expert, 1] = 0
@@ -258,22 +260,25 @@ class FiddlerMixtral():
                     else:
                         gpu_experts.append(i_expert)
                 
-                # TODO: further parallelism is possible
-                for i_expert in cpu_experts:
-                    top_2_list = top_2s[i_expert].tolist()
-                    idx_list = idxs[i_expert].tolist()
-                    current_state = inps[None, top_2_list].reshape(-1, hidden_dim)
-                    current_state = self.run_expert_at_cpu(
-                        i_layer, 
-                        i_expert, 
-                        current_state.to('cpu', non_blocking=True), 
-                        routing_weights[top_2_list, idx_list, None].to('cpu', non_blocking=True),
-                    )
-                    inps_after_experts.index_add_(
-                        0, 
-                        top_2s[i_expert].to(self.dev, non_blocking=True), 
-                        current_state.to(self.dev, non_blocking=True)
-                    )
+                def run_expert_in_thread():
+                    for i_expert in cpu_experts:
+                        top_2_list = top_2s[i_expert].tolist()
+                        idx_list = idxs[i_expert].tolist()
+                        current_state = inps[None, top_2_list].reshape(-1, hidden_dim)
+                        current_state = self.run_expert_at_cpu(
+                            i_layer, 
+                            i_expert, 
+                            current_state.to('cpu', non_blocking=True), 
+                            routing_weights[top_2_list, idx_list, None].to('cpu', non_blocking=True),
+                        )
+                        inps_after_experts.index_add_(
+                            0, 
+                            top_2s[i_expert].to(self.dev, non_blocking=True), 
+                            current_state.to(self.dev, non_blocking=True)
+                        )
+
+                thread = threading.Thread(target=run_expert_in_thread)
+                thread.start()
                 
                 for i_expert in gpu_experts:
                     top_2_list = top_2s[i_expert].tolist()
@@ -289,6 +294,8 @@ class FiddlerMixtral():
                         top_2s[i_expert].to(self.dev, non_blocking=True), 
                         current_state.to(self.dev, non_blocking=True)
                     )
+
+                thread.join()
 
             else: 
                 # decode stage with offloading
