@@ -1,6 +1,6 @@
 # Mixtral offloading
 
-This is a modified version of Mixtral offloading to enable running original Mixtral8x7B fp16 version in local setting.
+This is a modified version of [Mixtral offloading](https://github.com/dvmazur/mixtral-offloading) repository for the purpose of baseline evaluation.
 
 ## Performance Evaluate
 

@@ -4,13 +4,8 @@ import sys
 
 sys.path.append("mixtral-offloading")
 import torch
-from torch.nn import functional as F
 from hqq.core.quantize import BaseQuantizeConfig
-from huggingface_hub import snapshot_download
-from IPython.display import clear_output
-from tqdm.auto import trange
 from transformers import AutoConfig, AutoTokenizer
-from transformers.utils import logging as hf_logging
 
 from src.build_model import OffloadConfig, QuantConfig, build_model
 
@@ -78,7 +73,7 @@ import random
 import json
 import time
 
-path_json = './ShareGPT_V3_unfiltered_cleaned_split.json'
+path_json = './Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
 with open(path_json, 'r') as f:
     data = json.load(f)
 texts = []
@@ -92,43 +87,46 @@ print('n of input', len(texts))
 random.seed(0)
 random.shuffle(texts)
 
-n_sample = 10
+n_sample = 3
 
 model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-for input_token, output_token in zip([16, 32, 64, 128], [16, 32, 64, 128, 256, 512]):
-    idx_text = 0
-    time_sum = 0
-    num_tokens = 0
-    print(f'evaluating -- input_token: {input_token}, output_token: {output_token}')
-    for _ in range(n_sample):
-        text = texts[idx_text]
-        idx_text += 1
-        if len(text.split()) < input_token:
-            # not enough input length
-            continue
-        print(f'input text: {text.split()[:input_token]}')
-        input_ids = tokenizer.encode(text, return_tensors='pt').to(device)
-        start_time = time.time()
-        result = model.generate(
-            input_ids=input_ids[:, :input_token],
-            max_new_tokens=output_token,
-            do_sample=True,
-            temperature=0.9,
-            top_p=0.9,
-            pad_token_id=tokenizer.eos_token_id,
-            return_dict_in_generate=True
-        )
-        end_time = time.time()
-        time_sum += end_time - start_time
-        # count the number of tokens in the output
-        num_tokens += result["sequences"].shape[1]
-        print(f'output text: {tokenizer.decode(result["sequences"][0])}')
-        
-        
-    print(
-        f'*******************\n'
-        f'input_token: {input_token}, output_token: {output_token}, '
-        f'token/s: {num_tokens / time_sum:.2f}'
-        f'*******************\n')
+for input_token in [16, 32, 64, 128]:
+    for output_token in [16, 32, 64, 128, 256, 512]:
+        idx_text = 0
+        time_sum = 0
+        num_tokens = 0
+        print(f'evaluating -- input_token: {input_token}, output_token: {output_token}')
+        for _ in range(n_sample):
+            while True: 
+                text = texts[idx_text]
+                idx_text += 1
+                if len(text.split()) >= input_token:
+                    # enough input length
+                    break
+            # print(f'input text: {text.split()[:input_token]}')
+            input_ids = tokenizer.encode(text, return_tensors='pt').to(device)
+            start_time = time.time()
+            result = model.generate(
+                input_ids=input_ids[:, :input_token],
+                max_new_tokens=output_token,
+                min_new_tokens=output_token,
+                do_sample=True,
+                temperature=0.9,
+                top_p=0.9,
+                pad_token_id=tokenizer.eos_token_id,
+                return_dict_in_generate=True
+            )
+            end_time = time.time()
+            time_sum += end_time - start_time
+            # count the number of tokens in the output
+            num_tokens += result["sequences"].shape[1]
+            # print(f'output text: {tokenizer.decode(result["sequences"][0])}')
+            
+        print(
+            f'*******************\n'
+            f'input_token: {input_token}, output_token: {output_token}, '
+            f'time: {time_sum / n_sample:.2f}, '
+            f'token/s: {output_token / (time_sum / n_sample):.2f}\n'
+            f'*******************\n')
