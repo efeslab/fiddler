@@ -132,7 +132,7 @@ def eval(model):
         # the input of the first round
         texts.append(' '.join(d['conversations'][0]['value'].split()))
 
-    logging.info('n of input', len(texts))
+    logging.info(f'n of input {len(texts)}')
     random.seed(0)
     random.shuffle(texts)
 
@@ -197,6 +197,5 @@ if __name__ == "__main__":
     
     # save log to file
     logging.basicConfig(filename='eval.log', level=logging.INFO)
-    
     main()
     
