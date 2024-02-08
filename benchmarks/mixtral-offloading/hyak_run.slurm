@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 #SBATCH --job-name=mixtral-offload-rtx6k
