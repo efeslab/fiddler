@@ -125,7 +125,7 @@ def eval(model):
     
     device = torch.device("cuda:0")
 
-    path_json = './mixtral_offloading/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
+    path_json = 'Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
     with open(path_json, 'r') as f:
         data = json.load(f)
     texts = []
