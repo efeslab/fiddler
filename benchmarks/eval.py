@@ -1,5 +1,6 @@
 # fix numpy in colab
 import numpy
+import os
 import sys
 import argparse
 import logging
@@ -56,6 +57,8 @@ def init_deepspeed_mii():
 def init_mixtral_offload():
     from hqq.core.quantize import BaseQuantizeConfig
     from mixtral_offloading.src.build_model import OffloadConfig, QuantConfig, build_model
+
+    os.chdir("mixtral_offloading")
 
     quantized = False
 
@@ -143,8 +146,6 @@ def eval(model):
 
     for input_token in [16, 32, 64, 128]:
         for output_token in [16, 32, 64, 128, 256, 512]:
-    # for input_token in [32]:
-    #     for output_token in [32]:
             idx_text = 0
             time_sum = 0
             num_tokens = 0
