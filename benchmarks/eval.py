@@ -11,6 +11,8 @@ from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 def main():
+    os.chdir("mixtral_offloading")
+    
     if args.framework == 'mixtral-offloading':
         logging.info('Using mixtral-offloading')
         model = init_mixtral_offload()
@@ -57,8 +59,6 @@ def init_deepspeed_mii():
 def init_mixtral_offload():
     from hqq.core.quantize import BaseQuantizeConfig
     from mixtral_offloading.src.build_model import OffloadConfig, QuantConfig, build_model
-
-    os.chdir("mixtral_offloading")
 
     quantized = False
 
