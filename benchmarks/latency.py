@@ -71,4 +71,5 @@ if __name__ == "__main__":
                 f'input_token: {input_token}, output_token: {output_token}, '
                 f'prefill_time: {prefill_time_sum / n_sample}, '
                 f'decode_time: {decode_time_sum / n_sample}, '
-                f'hit_rate: {hit_rate_sum / n_sample}')
+                f'hit_rate: {hit_rate_sum / n_sample},'
+                f'{output_token / (prefill_time_sum + decode_time_sum):.2f}token/s')
