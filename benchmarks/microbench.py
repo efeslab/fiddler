@@ -19,7 +19,7 @@ def weight_copy(model, from_cpu=True):
         expert_placeholder = copy.deepcopy(
             model.model.layers[0].block_sparse_moe.experts[0]
         ).to(model.dev)
-        for i in range(10):
+        for i in range(32):
             model.model.layers[i].block_sparse_moe.experts[0].to('cpu')
             torch.cuda.synchronize()
             tick = time.time()
@@ -33,7 +33,7 @@ def weight_copy(model, from_cpu=True):
         expert_placeholder = copy.deepcopy(
             model.model.layers[0].block_sparse_moe.experts[0]
         ).to('cpu')
-        for i in range(10):
+        for i in range(32):
             model.model.layers[i].block_sparse_moe.experts[0].to(model.dev)
             torch.cuda.synchronize()
             tick = time.time()
@@ -48,7 +48,7 @@ def copy_activation(model, from_cpu=True):
     """Time to copy activations"""
     ret_time = []
     if from_cpu:
-        for i in range(10):
+        for i in range(32):
             inps = torch.randn((1, 4096), dtype=model.dtype, device='cpu')
             torch.cuda.synchronize()
             tick = time.time()
@@ -57,7 +57,7 @@ def copy_activation(model, from_cpu=True):
             ret_time.append(time.time() - tick)
             del inps 
     else:
-        for i in range(10):
+        for i in range(32):
             inps = torch.randn((1, 4096), dtype=model.dtype, device=model.dev)
             torch.cuda.synchronize()
             tick = time.time()
@@ -72,19 +72,20 @@ def expert_gpu(model, n_expert=1, batch_size=1):
     ret_time = []
 
     # warm up 
-    model.model.layers[0].block_sparse_moe.experts[0].to(model.dev)
+    model.model.layers[0].block_sparse_moe.experts[7].to(model.dev)
     inps = torch.randn((batch_size, 4096), dtype=model.dtype, device=model.dev)
     weights = torch.ones((batch_size, 1), dtype=model.dtype, device=model.dev)
-    inps = model.model.layers[0].block_sparse_moe.experts[0](inps, weights)
-    model.model.layers[0].block_sparse_moe.experts[0].to('cpu')
+    inps = model.model.layers[0].block_sparse_moe.experts[7](inps, weights)
+    model.model.layers[0].block_sparse_moe.experts[7].to('cpu')
     del inps, weights
     torch.cuda.synchronize()
 
-    for i in range(10):
+    for i in range(32):
         for j in range(n_expert):
             model.model.layers[i].block_sparse_moe.experts[j].to(model.dev)
             inps = torch.randn((batch_size, 4096), dtype=model.dtype, device=model.dev)
-            weights = torch.ones((batch_size, 1), dtype=model.dtype, device=model.dev)
+            weights = torch.randn((batch_size, 1), dtype=model.dtype, device=model.dev)
+            torch.cuda.empty_cache()
             torch.cuda.synchronize()
             tick = time.time()
             inps = model.model.layers[i].block_sparse_moe.experts[j](inps, weights)
@@ -98,7 +99,7 @@ def expert_cpu(model, n_expert=1, batch_size=1, multithreading=False):
     """Time to execute an expert at CPU"""
     ret_time = []
     # warm up
-    model.model.layers[0].block_sparse_moe.experts[0].to('cpu')
+    model.model.layers[0].block_sparse_moe.experts[7].to('cpu')
     inps = torch.randn((batch_size, 4096), dtype=model.dtype, device='cpu')
     weights = torch.ones((batch_size, 1), dtype=model.dtype, device='cpu')
     torch.cuda.synchronize()
@@ -108,11 +109,11 @@ def expert_cpu(model, n_expert=1, batch_size=1, multithreading=False):
     del inps, weights
     torch.cuda.synchronize()
 
-    for i in range(10):
+    for i in range(32):
         for j in range(n_expert):
             model.model.layers[i].block_sparse_moe.experts[j].to('cpu')
             inps = torch.randn((batch_size, 4096), dtype=model.dtype, device='cpu')
-            weights = torch.ones((batch_size, 1), dtype=model.dtype, device='cpu')
+            weights = torch.randn((batch_size, 1), dtype=model.dtype, device='cpu')
             torch.cuda.synchronize()
             tick = time.time()
             inps = model.run_expert_at_cpu(i, j, inps, weights)
@@ -148,7 +149,7 @@ if __name__ == "__main__":
     model = FiddlerMixtral(args)
 
     def format_output(array):
-        return f'mean: {np.mean(array) * 1000} ms, std: {np.std(array) * 1000} ms'
+        return f'mean: {np.mean(array) * 1000:.2f} ms, std: {np.std(array) * 1000:.2f} ms'
     
     print(f'\n1) Weight copy, CPU -> GPU\n{format_output(weight_copy(model, from_cpu=True))}')
     print(f'\n2) Weight copy, GPU -> CPU\n{format_output(weight_copy(model, from_cpu=False))}')
