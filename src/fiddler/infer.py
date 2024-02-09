@@ -124,7 +124,7 @@ class FiddlerMixtral():
         prefill_time, decode_time = 0, 0
         for i_token in range(output_token):
             # tick = time.time()
-            # print(self.tokenizer.decode(input_ids[0, :]))
+            print(self.tokenizer.decode(input_ids[0, :]))
             logits = self.mixtral_forward(
                 input_ids, 
                 position_ids,
@@ -358,7 +358,7 @@ if __name__ == '__main__':
         help='0: exeute at GPU (baseline), 1: offload to CPU.'
     )
     parser.add_argument(
-        '--input', type=str, default='Mistral AI is a',
+        '--input', type=str, default='University of Washington is',
         help='Input text to generate.'
     )
     parser.add_argument(
@@ -376,4 +376,5 @@ if __name__ == '__main__':
     # if args.microbench:
     #     model.microbench()
     #     exit()
-    model.generate(args.input, output_token=args.n_token)
+    prefill_time, decode_time, hit_rate = model.generate(args.input, output_token=args.n_token)
+    print(f'prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}')
