@@ -104,8 +104,7 @@ def expert_cpu(model, n_expert=1, batch_size=1, multithreading=False):
     weights = torch.ones((batch_size, 1), dtype=model.dtype, device='cpu')
     torch.cuda.synchronize()
     tick = time.time()
-    inps = model.run_expert_at_cpu(0, 0, inps, weights)
-    ret_time.append(time.time() - tick)
+    inps = model.run_expert_at_cpu(0, 7, inps, weights)
     del inps, weights
     torch.cuda.synchronize()
 
@@ -134,14 +133,6 @@ if __name__ == "__main__":
     parser.add_argument(
         '--cpu-offload', type=int, default=1, choices=[0, 1],
         help='0: exeute at GPU (baseline), 1: offload to CPU.'
-    )
-    parser.add_argument(
-        '--input', type=str, default='Mistral AI is a',
-        help='Input text to generate.'
-    )
-    parser.add_argument(
-        '--n-token', type=int, default=20,
-        help='Number of tokens to generate.',
     )
 
     args = parser.parse_args() 
