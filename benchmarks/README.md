@@ -1,7 +1,18 @@
 # Benchmarks
-This page contains instructions for running evaluation for two baselines: [Mixtral offloading](https://github.com/dvmazur/mixtral-offloading) and [DeepSpeed-Mii](https://github.com/microsoft/DeepSpeed-MII)
 
-## DeepSpeed-Mii
+Download the ShareGPT dataset before running benchmarks.
+
+```
+wget https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json
+```
+
+- `latency.py`: Single batch latency evaluation
+- `microbench.py`: Microbenchmarks
+
+## Baseline evaluations
+Following is the instructions for running evaluation for two baselines: [Mixtral offloading](https://github.com/dvmazur/mixtral-offloading) and [DeepSpeed-Mii](https://github.com/microsoft/DeepSpeed-MII)
+
+### DeepSpeed-Mii
 Follow these steps to install DeepSpeed packages and run evaluation.
 
 ```
@@ -12,7 +23,7 @@ pip install deepspeed-mii accelerate
 python3 eval.py --framework=deepspeed-mii
 ```
 
-## Mixtral Offloading
+### Mixtral Offloading
 
 Follow these steps to install packages, download model and datasets, and run evaluation.
 

@@ -1,4 +1,7 @@
 # fix numpy in colab
+from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
+from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
+import torch
 import numpy
 import os
 import sys
@@ -6,13 +9,11 @@ import argparse
 import logging
 
 sys.path.append("mixtral-offloading")
-import torch
-from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
-from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
+
 
 def main():
     os.chdir("mixtral_offloading")
-    
+
     if args.framework == 'mixtral-offloading':
         logging.info('Using mixtral-offloading')
         model = init_mixtral_offload()
@@ -21,9 +22,10 @@ def main():
         model = init_deepspeed_mii()
     else:
         raise ValueError(f'Unknown framework: {args.framework}')
-    
+
     eval(model)
-    
+
+
 def init_deepspeed_mii():
     import deepspeed
     from transformers.deepspeed import HfDeepSpeedConfig
@@ -45,7 +47,8 @@ def init_deepspeed_mii():
 
     hfdsc = HfDeepSpeedConfig(ds_config)
 
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=torch.bfloat16)
 
     deepspeed.utils.set_z3_leaf_modules(model, [MixtralSparseMoeBlock])
     model.eval()
@@ -55,14 +58,15 @@ def init_deepspeed_mii():
     model = ds_engine.module
 
     return model
-    
+
+
 def init_mixtral_offload():
     from hqq.core.quantize import BaseQuantizeConfig
     from mixtral_offloading.src.build_model import OffloadConfig, QuantConfig, build_model
 
     quantized = False
 
-    if quantized == False:
+    if not quantized:
         state_path = "Mixtral-8x7B-Instruct-v0.1"
         model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     else:
@@ -87,7 +91,6 @@ def init_mixtral_offload():
         offload_per_layer=offload_per_layer,
     )
 
-
     attn_config = BaseQuantizeConfig(
         nbits=4,
         group_size=64,
@@ -95,7 +98,6 @@ def init_mixtral_offload():
         quant_scale=True,
     )
     attn_config["scale_quant_params"]["group_size"] = 256
-
 
     ffn_config = BaseQuantizeConfig(
         nbits=2,
@@ -105,10 +107,11 @@ def init_mixtral_offload():
     )
 
     if quantized:
-        quant_config = QuantConfig(ffn_config=ffn_config, attn_config=attn_config)
+        quant_config = QuantConfig(
+            ffn_config=ffn_config,
+            attn_config=attn_config)
     else:
         quant_config = None
-
 
     model = build_model(
         device=device,
@@ -118,11 +121,12 @@ def init_mixtral_offload():
     )
     return model
 
+
 def eval(model):
     import random
     import json
     import time
-    
+
     device = torch.device("cuda:0")
 
     path_json = 'Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
@@ -131,7 +135,7 @@ def eval(model):
     texts = []
     for d in data:
         if len(d['conversations']) == 0:
-            continue 
+            continue
         # the input of the first round
         texts.append(' '.join(d['conversations'][0]['value'].split()))
 
@@ -149,16 +153,18 @@ def eval(model):
             idx_text = 0
             time_sum = 0
             num_tokens = 0
-            logging.info(f'evaluating -- input_token: {input_token}, output_token: {output_token}')
+            logging.info(
+                f'evaluating -- input_token: {input_token}, output_token: {output_token}')
             for _ in range(n_sample):
-                while True: 
+                while True:
                     text = texts[idx_text]
                     idx_text += 1
                     if len(text.split()) >= input_token:
                         # enough input length
                         break
                 # print(f'input text: {text.split()[:input_token]}')
-                input_ids = tokenizer.encode(text, return_tensors='pt').to(device)
+                input_ids = tokenizer.encode(
+                    text, return_tensors='pt').to(device)
                 start_time = time.time()
                 result = model.generate(
                     input_ids=input_ids[:, :input_token],
@@ -175,14 +181,15 @@ def eval(model):
                 # count the number of tokens in the output
                 num_tokens += result["sequences"].shape[1]
                 # print(f'output text: {tokenizer.decode(result["sequences"][0])}')
-                
+
             logging.info(
                 f'*******************\n'
                 f'input_token: {input_token}, output_token: {output_token}, '
                 f'time: {time_sum / n_sample:.2f}, '
                 f'token/s: {output_token / (time_sum / n_sample):.2f}\n'
                 f'*******************\n')
-            
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -190,13 +197,16 @@ if __name__ == "__main__":
         help='Whether to use quantized model in mixtral-offloading.'
     )
     parser.add_argument(
-        '--framework', type=str, default='mixtral-offloading', choices=['mixtral-offloading', 'deepspeed-mii'],
-        help='Which framework to use for evaluation.'
-    )
-    
+        '--framework',
+        type=str,
+        default='mixtral-offloading',
+        choices=[
+            'mixtral-offloading',
+            'deepspeed-mii'],
+        help='Which framework to use for evaluation.')
+
     args = parser.parse_args()
-    
+
     # save log to file
     logging.basicConfig(filename='eval.log', level=logging.INFO)
     main()
-    
