@@ -20,7 +20,7 @@ conda create -n deepspeed python=3.10
 conda activate deepspeed
 conda install -c anaconda mpi4py
 pip install deepspeed-mii accelerate
-python3 eval.py --framework=deepspeed-mii
+python3 eval-baseline.py --framework=deepspeed-mii
 ```
 
 ### Mixtral Offloading
@@ -32,5 +32,5 @@ conda create -n mixtral-offload python=3.10
 conda activate mixtral-offload
 pip install -r requirements.txt
 ./download.sh
-python3 eval.py --framework=mixtral-offloading
+python3 eval-baseline.py --framework=mixtral-offloading
 ```
