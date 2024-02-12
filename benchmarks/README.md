@@ -10,9 +10,9 @@ wget https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/r
 - `microbench.py`: Microbenchmarks
 
 ## Baseline evaluations
-Following is the instructions for running evaluation for two baselines: [Mixtral offloading](https://github.com/dvmazur/mixtral-offloading) and [DeepSpeed-Mii](https://github.com/microsoft/DeepSpeed-MII)
+Following is the instructions for running evaluation for two baselines: [Mixtral offloading](https://github.com/dvmazur/mixtral-offloading) and [DeepSpeed-MII](https://github.com/microsoft/DeepSpeed-MII)
 
-### DeepSpeed-Mii
+### DeepSpeed-MII
 Follow these steps to install DeepSpeed packages and run evaluation.
 
 ```
