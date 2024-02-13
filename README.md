@@ -1,12 +1,11 @@
-# 🎻 Fiddler: CPU-GPU Orchestration for Fast Local Inference of MoE Models
-<!-- [[arxiv]]() -->
+# 🎻 Fiddler: CPU-GPU Orchestration for Fast Local Inference of MoE Models [[paper]](https://arxiv.org/abs/2402.07033)
 
 (This repository is a proof-of-concept and still under heavy construction)
 
 Fiddler is a fast inference system for LLMs based on Mixture-of-Experts (MoE) architecture at local devices. It allows you to run **unquantized Mixtral-8x7B model (>90GB of parameters) with >3 token/s on a single 24GB GPU**.
 
 ## Update
-<!-- - [2024/02] We published an arxiv preprint -->
+- [2024/02] We published an [arxiv preprint](https://arxiv.org/abs/2402.07033)
 - [2024/02] We released the repository.
 
 ## Usage
@@ -59,7 +58,15 @@ We are working on supporting the following features.
 ## Known Limitations
 Fiddler is currently relying on PyTorch implementation for expert processing at the CPU, and it is slow if your CPU does not support AVX512.
 
-<!-- ## Citation
+## Citation
 If you use Fiddler in your research, please cite the following paper. 
 ```
-``` -->
+@misc{kamahori2024fiddler,
+      title={Fiddler: CPU-GPU Orchestration for Fast Inference of Mixture-of-Experts Models}, 
+      author={Keisuke Kamahori and Yile Gu and Kan Zhu and Baris Kasikci},
+      year={2024},
+      eprint={2402.07033},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
