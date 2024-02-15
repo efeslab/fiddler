@@ -142,7 +142,7 @@ if __name__ == "__main__":
         type=int,
         default=1,
         choices=[0, 1],
-        help="0: exeute at GPU (baseline), 1: offload to CPU.",
+        help="0: execute at GPU (baseline), 1: offload to CPU.",
     )
 
     args = parser.parse_args()
