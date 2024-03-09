@@ -5,6 +5,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 import transformers
 
 
@@ -32,6 +33,8 @@ class FiddlerMixtral:
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
 
+        self.beam_num = 2
+
         # TODO: find this value based on device config
         self.latency_cpu = 7
         self.latency_gpu = 70
@@ -49,7 +52,7 @@ class FiddlerMixtral:
         )
 
         self.set_expert_loc(n_expert_on_gpu)
-        print(self.expert_loc)
+        # print(self.expert_loc)
 
         self.bring_expert_to_gpu()
 
@@ -358,14 +361,28 @@ class FiddlerMixtral:
         free_mem = total_mem * 0.95 - torch.cuda.memory_allocated(self.dev)
         return int((free_mem) // (n_param * 2))
 
-    def generate(self, text, output_token=20, input_token=None):
+    def generate(self, texts, output_token=20, input_token=None):
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
 
         self.cnt_expert_hit = 0
         self.cnt_expert_all = 0
 
-        input_ids, position_ids = self.tokenize(text)
+        input_ids = []
+        for text in texts:
+            input_id, position_id = self.tokenize(text)
+            input_ids.append(input_id[0])
+        input_ids = pad_sequence(
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        ).to(self.dev)
+        position_ids = (
+            torch.arange(0, input_ids.shape[-1], dtype=torch.long, device=self.dev)
+            .unsqueeze(0)
+            .view(-1, input_ids.shape[-1])
+        )
+
+        # input_ids.shape: (batch_size, seq_len)
+        # position_ids.shape: (1,seq_len)
 
         if input_token is not None:
             input_ids = input_ids[:, :input_token]
@@ -374,9 +391,11 @@ class FiddlerMixtral:
         tick = time.time()
         is_decode = False
         prefill_time, decode_time = 0, 0
+        decode_strings = ["" for _ in range(input_ids.shape[0])]
         for i_token in range(output_token):
             # tick = time.time()
-            print(self.tokenizer.decode(input_ids[0, :]))
+            for i in range(input_ids.shape[0]):
+                decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
             logits = self.mixtral_forward(
                 input_ids,
                 position_ids,
@@ -385,22 +404,36 @@ class FiddlerMixtral:
             # print('Time:', time.time() - tick)
 
             logits = logits.to("cpu")
-
+            # logits.shape: (batch_size, seq_len, vocab_size)
+            # greedy search:
             output = torch.argmax(logits, dim=-1)
-            self.past_key_values_length += output.shape[-1]
-            input_ids = output[:, -1].unsqueeze(0).to(self.dev)
-            position_ids = torch.arange(
-                self.past_key_values_length,
-                self.past_key_values_length + 1,
-                dtype=torch.long,
-                device=self.dev,
+
+            # beam_search:
+            # probs, output = torch.topk(logits, self.beam_num, dim=-1)
+            # output.shape: (batch_size, seq_len, beam_num) probs.shape is the same
+
+            self.past_key_values_length += output.shape[1]
+            input_ids = output[:, -1].unsqueeze(-1).to(self.dev)
+            # input_ids.shape: (batch_size, beam_num, 1)
+
+            position_ids = (
+                torch.arange(
+                    self.past_key_values_length,
+                    self.past_key_values_length + 1,
+                    dtype=torch.long,
+                    device=self.dev,
+                )
+                .unsqueeze(0)
+                .view(-1, 1)
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, 1)
+            # position_ids.shape: (1, 1)
             if not is_decode:
                 prefill_time += time.time() - tick
                 tick = time.time()
             is_decode = True
         decode_time = time.time() - tick
+        for i in range(input_ids.shape[0]):
+            print(decode_strings[i])
         return prefill_time, decode_time, self.cnt_expert_hit / self.cnt_expert_all
 
     def tokenize(self, text):
@@ -429,14 +462,18 @@ class FiddlerMixtral:
                 past_key_value=self.past_key_value,
                 use_cache=True,
             )
+            # inps.shape: (batch_size, seq_len/token_num, embed_dim)
             inps = inps_residual + inps
             inps_residual = inps
             inps = layer.post_attention_layernorm(inps)
-
             inps = inps.view(-1, hidden_dim)
+            # inps.shape: (batch_size*seq_len*embed_dim/hidden_dim, hidden_dim)
             router_logits = layer.block_sparse_moe.gate(inps)
             routing_weights = F.softmax(router_logits, dim=1)
+            # routing_weights.shape: (batch_size*seq_len, num_experts)
             routing_weights, selected_experts = torch.topk(routing_weights, 2, dim=-1)
+            # routing_weights.shape: (batch_size*seq_len, 2)
+            # selected_experts.shape: (batch_size*seq_len, 2)
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
 
             # intermediate variable to store the output of experts
@@ -484,7 +521,7 @@ class FiddlerMixtral:
 
                     # end of one expert
 
-            elif not is_decode:
+            else:
                 # prefill stage with offloading
                 expert_mask = torch.nn.functional.one_hot(
                     selected_experts, num_classes=8
@@ -583,42 +620,42 @@ class FiddlerMixtral:
 
                 thread.join()
 
-            else:
-                # decode stage with offloading
-                assert input_ids.shape[-1] == 1
-                expert_0, expert_1 = int(selected_experts[0][0]), int(
-                    selected_experts[0][1]
-                )
-                routing_weights_0, routing_weights_1 = (
-                    routing_weights[:, 0, None],
-                    routing_weights[:, 1, None],
-                )
+            # else:
+            #     # decode stage with offloading
+            #     assert input_ids.shape[-1] == 1
+            #     expert_0, expert_1 = int(selected_experts[0][0]), int(
+            #         selected_experts[0][1]
+            #     )
+            #     routing_weights_0, routing_weights_1 = (
+            #         routing_weights[:, 0, None],
+            #         routing_weights[:, 1, None],
+            #     )
 
-                assert expert_0 != expert_1
+            #     assert expert_0 != expert_1
 
-                self.cnt_expert_all += 2
+            #     self.cnt_expert_all += 2
 
-                if self.is_expert_in_gpu(i_layer, expert_0):
-                    inps_after_experts += experts[expert_0](inps, routing_weights_0)
-                    self.cnt_expert_hit += 1
-                else:
-                    inps_after_experts += self.run_expert_at_cpu(
-                        i_layer,
-                        expert_0,
-                        inps.to("cpu", non_blocking=True),
-                        routing_weights_0.to("cpu", non_blocking=True),
-                    ).to(self.dev, non_blocking=True)
+            #     if self.is_expert_in_gpu(i_layer, expert_0):
+            #         inps_after_experts += experts[expert_0](inps, routing_weights_0)
+            #         self.cnt_expert_hit += 1
+            #     else:
+            #         inps_after_experts += self.run_expert_at_cpu(
+            #             i_layer,
+            #             expert_0,
+            #             inps.to("cpu", non_blocking=True),
+            #             routing_weights_0.to("cpu", non_blocking=True),
+            #         ).to(self.dev, non_blocking=True)
 
-                if self.is_expert_in_gpu(i_layer, expert_1):
-                    inps_after_experts += experts[expert_1](inps, routing_weights_1)
-                    self.cnt_expert_hit += 1
-                else:
-                    inps_after_experts += self.run_expert_at_cpu(
-                        i_layer,
-                        expert_1,
-                        inps.to("cpu", non_blocking=True),
-                        routing_weights_1.to("cpu", non_blocking=True),
-                    ).to(self.dev, non_blocking=True)
+            #     if self.is_expert_in_gpu(i_layer, expert_1):
+            #         inps_after_experts += experts[expert_1](inps, routing_weights_1)
+            #         self.cnt_expert_hit += 1
+            #     else:
+            #         inps_after_experts += self.run_expert_at_cpu(
+            #             i_layer,
+            #             expert_1,
+            #             inps.to("cpu", non_blocking=True),
+            #             routing_weights_1.to("cpu", non_blocking=True),
+            #         ).to(self.dev, non_blocking=True)
 
             # addition because there's residual connection over moe layer
             inps = inps_residual + inps_after_experts.reshape(original_inps_shape)
