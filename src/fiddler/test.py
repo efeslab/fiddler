@@ -115,14 +115,35 @@ def test_topk():
             [[0.4, 0.3, 0.2, 0.1], [0.2, 0.4, 0.1, 0.45]],
         ]
     )
+    # logits = torch.tensor(
+    #     [
+    #         [[0.1, 0.2, 0.3, 0.4]],
+    #         [[0.4, 0.3, 0.2, 0.1]],
+    #     ]
+    # )
     print(logits.shape)
-    values, output = torch.topk(logits, 2, dim=-1)
-    print(output, values)
+    values, output = torch.topk(logits, 3, dim=-1)
+    print(output)
+    # output = output.view(-1, 1)
+    # print(output)
+    # output = output.view(-1, 1)
+    # print(output)
     input_ids = output[:, -1]
     print(input_ids)
-    input_ids = input_ids.unsqueeze(-1)
+    col_idx = torch.tensor([[0], [1]])
+    row_idx = torch.tensor([0, 1])
+    input_ids = input_ids[row_idx, col_idx].view(-1, 1)
     print(input_ids)
-    print(input_ids.shape)
+    # values = values[:, -1]
+    # values = values.flatten().view(-1, 1)
+    # new_values = torch.full((values.shape[0], 1), 1.0)
+    # new_values = new_values * values
+    # print(new_values)
+    # print(values)
+    # print(input_ids)
+    # print(input_ids.shape)
+    # input_ids = input_ids.flatten().view(-1, 1)
+    # print(input_ids)
 
 
 def test_cat():
@@ -139,6 +160,7 @@ def test_cat():
 
 
 if __name__ == "__main__":
-    # test_topk()
-    test_cat()
+    test_topk()
+    # test_cat()
     # test_unsqueeze()
+    # test_argmax()

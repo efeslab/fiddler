@@ -37,9 +37,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-batch-size",
         type=int,
-        default=64,
+        default=1,
         help="Maximum batch size for inference.",
     )
+    parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
 
     args = parser.parse_args()
 
@@ -60,24 +61,17 @@ if __name__ == "__main__":
         print(
             f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
         )
-    utils.plot(
-        batch_sizes,
-        prefill_times,
-        "prefill_time-batch_size",
-        "prefill_time(s)",
-        "batch_size",
-    )
-    utils.plot(
-        batch_sizes,
-        decode_times,
-        "decode_time-batch_size",
-        "decode_time(s)",
-        "batch_size",
-    )
-    utils.plot(
-        batch_sizes,
-        hit_rates,
-        "hit_rate-batch_size",
-        "hit_rate",
-        "batch_size",
-    )
+    # utils.plot(
+    #     batch_sizes,
+    #     prefill_times,
+    #     "prefill_time-batch_size",
+    #     "prefill_time(s)",
+    #     "batch_size",
+    # )
+    # utils.plot(
+    #     batch_sizes,
+    #     decode_times,
+    #     "decode_time-batch_size",
+    #     "decode_time(s)",
+    #     "batch_size",
+    # )
