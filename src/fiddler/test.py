@@ -159,8 +159,33 @@ def test_cat():
     print(y)
 
 
+def initial_beam_tensor(beam_num, input_tensor):
+    # transfer tensor of shape (batch_size*beam_num, seq_len, beam_num) to (batch_size*beam_num, 1) properly
+    assert input_tensor.shape[-1] == beam_num
+    input_tensor = input_tensor[:, -1]
+    row_idx = torch.tensor(
+        [i * beam_num for i in range(input_tensor.shape[0] // beam_num)]
+    )
+    output_tensor = input_tensor[row_idx].view(-1, 1)
+    return output_tensor
+
+
 if __name__ == "__main__":
-    test_topk()
+    # test_topk()
     # test_cat()
     # test_unsqueeze()
     # test_argmax()
+    logits = torch.tensor(
+        [
+            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.2, 0.3, 0.1]],
+            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.2, 0.3, 0.1]],
+            [[0.4, 0.3, 0.2, 0.1], [0.2, 0.4, 0.1, 0.45]],
+            [[0.4, 0.3, 0.2, 0.1], [0.2, 0.4, 0.1, 0.45]],
+        ]
+    )
+    beam_num = 2
+    new_probs, output = torch.topk(logits, beam_num, dim=-1)
+    print(new_probs, "\n", output)
+    new_probs = initial_beam_tensor(beam_num, new_probs)
+    output = initial_beam_tensor(beam_num, output)
+    print(new_probs, "\n", output)

@@ -365,14 +365,10 @@ class FiddlerMixtral:
         # transfer tensor of shape (batch_size*beam_num, seq_len, beam_num) to (batch_size*beam_num, 1) properly
         assert input_tensor.shape[-1] == self.beam_num
         input_tensor = input_tensor[:, -1]
-        col_idx = []
-        for i in range(self.beam_num):
-            col_idx.append([i])
-        col_idx = torch.tensor(col_idx)
         row_idx = torch.tensor(
             [i * self.beam_num for i in range(input_tensor.shape[0] // self.beam_num)]
         )
-        output_tensor = input_tensor[row_idx, col_idx].view(-1, 1)
+        output_tensor = input_tensor[row_idx].view(-1, 1)
         return output_tensor
 
     def generate(self, texts, output_token=20, input_token=None):
@@ -432,6 +428,7 @@ class FiddlerMixtral:
             # output = torch.argmax(logits, dim=-1)
 
             # beam_search:
+            self.past_key_values_length += logits.shape[1]
             if search_start:
                 new_probs, output = torch.topk(logits, 1, dim=-1)
                 new_probs = new_probs[:, -1].flatten().view(-1, 1)
@@ -443,7 +440,6 @@ class FiddlerMixtral:
             # new_probs = new_probs / new_probs.sum(dim=-1, keepdim=True)
             probs = probs * new_probs
 
-            self.past_key_values_length += output.shape[-2]
             input_ids = output[:, -1].flatten().view(-1, 1).to(self.dev)
             # input_ids.shape: (batch_size, seq_len=1)
 
@@ -463,16 +459,12 @@ class FiddlerMixtral:
                 tick = time.time()
             is_decode = True
         decode_time = time.time() - tick
-
         probs = probs.view(-1, self.beam_num)
         max_ids = torch.argmax(probs, dim=-1)
-        print(probs)
         for i in range(max_ids.shape[0]):
-            print(
-                f"Input: {texts[i]}, Output: {decode_strings[i * self.beam_num + max_ids[i]]}"
-            )
-        for i in range(len(decode_strings)):
-            print(i, decode_strings[i])
+            print("--------------------")
+            print(f"Input: {texts[i]}")
+            print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
         return prefill_time, decode_time, self.cnt_expert_hit / self.cnt_expert_all
 
     def tokenize(self, text):

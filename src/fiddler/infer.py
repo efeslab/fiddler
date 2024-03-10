@@ -4,6 +4,40 @@ import utils
 
 from mixtral import FiddlerMixtral
 
+
+def test_generate(args, text):
+    model = FiddlerMixtral(args)
+    prefill_times = []
+    decode_times = []
+    hit_rates = []
+    batch_sizes = list(range(1, args.batch_size + 1))
+    for i in range(1, args.batch_size + 1):
+        texts = text * i
+        prefill_time, decode_time, hit_rate = model.generate(
+            texts, output_token=args.n_token
+        )
+        prefill_times.append(prefill_time)
+        decode_times.append(decode_time)
+        hit_rates.append(hit_rate)
+        print(
+            f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+        )
+    utils.plot(
+        batch_sizes,
+        prefill_times,
+        "beam-prefill_time-batch_size",
+        "prefill_time(s)",
+        "batch_size",
+    )
+    utils.plot(
+        batch_sizes,
+        decode_times,
+        "beam-decode_time-batch_size",
+        "decode_time(s)",
+        "batch_size",
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -35,7 +69,7 @@ if __name__ == "__main__":
         help="Number of tokens to generate.",
     )
     parser.add_argument(
-        "--max-batch-size",
+        "--batch-size",
         type=int,
         default=1,
         help="Maximum batch size for inference.",
@@ -44,34 +78,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    model = FiddlerMixtral(args)
+    # model = FiddlerMixtral(args)
     text = ["University of Washington is"]
-    prefill_times = []
-    decode_times = []
-    hit_rates = []
-    batch_sizes = list(range(1, args.max_batch_size + 1))
-    for i in range(1, args.max_batch_size + 1):
-        texts = text * i
-        prefill_time, decode_time, hit_rate = model.generate(
-            texts, output_token=args.n_token
-        )
-        prefill_times.append(prefill_time)
-        decode_times.append(decode_time)
-        hit_rates.append(hit_rate)
-        print(
-            f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
-        )
-    # utils.plot(
-    #     batch_sizes,
-    #     prefill_times,
-    #     "prefill_time-batch_size",
-    #     "prefill_time(s)",
-    #     "batch_size",
+    test_generate(args, text)
+    # prefill_time, decode_time, hit_rate = model.generate(
+    #     [args.input] * args.batch_size, output_token=args.n_token
     # )
-    # utils.plot(
-    #     batch_sizes,
-    #     decode_times,
-    #     "decode_time-batch_size",
-    #     "decode_time(s)",
-    #     "batch_size",
+    # print(
+    #     f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
     # )
