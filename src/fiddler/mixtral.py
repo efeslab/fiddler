@@ -34,6 +34,7 @@ class FiddlerMixtral:
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
 
         self.beam_num = args.beam_num
+        self.batch_size = args.batch_size
 
         # TODO: find this value based on device config
         self.latency_cpu = 7
@@ -461,11 +462,16 @@ class FiddlerMixtral:
         decode_time = time.time() - tick
         probs = probs.view(-1, self.beam_num)
         max_ids = torch.argmax(probs, dim=-1)
-        for i in range(max_ids.shape[0]):
-            print("--------------------")
-            print(f"Input: {texts[i]}")
-            print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
-        return prefill_time, decode_time, self.cnt_expert_hit / self.cnt_expert_all
+        # for i in range(max_ids.shape[0]):
+        #     print("--------------------")
+        #     print(f"Input: {texts[i]}")
+        #     print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
+        torch.cuda.empty_cache()
+        return (
+            prefill_time,
+            decode_time,
+            self.cnt_expert_hit / self.cnt_expert_all,
+        )
 
     def tokenize(self, text):
         encodings = self.tokenizer(text, return_tensors="pt")

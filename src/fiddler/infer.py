@@ -38,6 +38,24 @@ def test_generate(args, text):
     )
 
 
+def test_pp(batch_size, prompt_num):
+    model = FiddlerMixtral(args)
+    text = ["University of Washington is"]
+    texts = text * prompt_num
+    batch_num = prompt_num // batch_size
+    total_prefill_time, total_decode_time = 0, 0
+    for i in range(batch_num):
+        batched_texts = texts[i * batch_size : (i + 1) * batch_size]
+        prefill_time, decode_time, hit_rate = model.generate(
+            batched_texts, output_token=args.n_token
+        )
+        total_prefill_time += prefill_time
+        total_decode_time += decode_time
+
+    with open(f"../../results/pp_{batch_size}.txt", "a") as f:
+        f.write(f"prefill_time: {total_prefill_time}, decode_time: {total_decode_time}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -72,18 +90,23 @@ if __name__ == "__main__":
         "--batch-size",
         type=int,
         default=1,
-        help="Maximum batch size for inference.",
+        help="batch size for inference.",
     )
     parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
+    parser.add_argument(
+        "--prompt_num", type=int, default=1, help="Number of input prompts."
+    )
 
     args = parser.parse_args()
 
     # model = FiddlerMixtral(args)
     text = ["University of Washington is"]
-    test_generate(args, text)
+    # test_generate(args, text)
     # prefill_time, decode_time, hit_rate = model.generate(
     #     [args.input] * args.batch_size, output_token=args.n_token
     # )
     # print(
     #     f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
     # )
+
+    test_pp(args.batch_size, args.prompt_num)

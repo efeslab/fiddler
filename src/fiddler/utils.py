@@ -22,3 +22,15 @@ def plot(x, y, filename, ylabel, xlabel):
     plt.xlabel(xlabel)
     plt.legend()
     plt.savefig("../../results/" + filename + ".png")
+
+
+def plot_batch(batch_size):
+    with open(f"../../results/pp_{batch_size}.txt") as f:
+        data = f.readlines()
+        print(data)
+        data = [x.strip() for x in data]
+        print(data)
+
+
+if __name__ == "__main__":
+    plot_batch(8)
