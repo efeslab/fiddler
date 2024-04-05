@@ -160,5 +160,5 @@ cython_debug/
 #.idea/
 src/fiddler/profile_expert.py
 src/fiddler/test.sh
-results/
+results/*
 data.json
