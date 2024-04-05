@@ -21,6 +21,7 @@ class FiddlerMixtral:
         )
         self.lm_head = self.model.lm_head
         self.model = self.model.model
+        self.vocab_size = self.model.config.vocab_size
         self.expert_placeholder = copy.deepcopy(
             self.model.layers[0].block_sparse_moe.experts[0]
         ).to(self.dev)
@@ -32,6 +33,7 @@ class FiddlerMixtral:
 
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
+        self.expert_token_num = np.zeros((self.n_layer, self.n_expert), dtype=int)
 
         self.beam_num = args.beam_num
         self.batch_size = args.batch_size
@@ -372,21 +374,24 @@ class FiddlerMixtral:
         output_tensor = input_tensor[row_idx].view(-1, 1)
         return output_tensor
 
-    def generate(self, texts, output_token=20, input_token=None):
+    def generate(self, texts=None, output_token=20, input_token=None, input_ids=None):
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
 
         self.cnt_expert_hit = 0
         self.cnt_expert_all = 0
 
-        input_ids = []
-        for text in texts:
-            input_id, position_id = self.tokenize(text)
-            for i in range(self.beam_num):
-                input_ids.append(input_id[0])
-        input_ids = pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        ).to(self.dev)
+        if input_ids is None:
+            input_ids = []
+            for text in texts:
+                input_id, position_id = self.tokenize(text)
+                for i in range(self.beam_num):
+                    input_ids.append(input_id[0])
+            input_ids = pad_sequence(
+                input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+            ).to(self.dev)
+        else:
+            input_ids = input_ids.to(self.dev)
         position_ids = (
             torch.arange(0, input_ids.shape[-1], dtype=torch.long, device=self.dev)
             .unsqueeze(0)
@@ -408,16 +413,13 @@ class FiddlerMixtral:
         probs = torch.full((input_ids.shape[0], 1), 1.0)
 
         for i_token in range(output_token):
-            # tick = time.time()
             for i in range(input_ids.shape[0]):
                 decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
 
             logits = self.mixtral_forward(
                 input_ids,
                 position_ids,
-                is_decode,
             )
-            # print('Time:', time.time() - tick)
 
             logits = logits.to("cpu")
             # logits.shape: (batch_size, seq_len, vocab_size)
@@ -462,10 +464,10 @@ class FiddlerMixtral:
         decode_time = time.time() - tick
         probs = probs.view(-1, self.beam_num)
         max_ids = torch.argmax(probs, dim=-1)
-        # for i in range(max_ids.shape[0]):
-        #     print("--------------------")
-        #     print(f"Input: {texts[i]}")
-        #     print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
+        for i in range(max_ids.shape[0]):
+            print("--------------------")
+            print(f"Input: {texts[i]}")
+            print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
         torch.cuda.empty_cache()
         return (
             prefill_time,
@@ -483,14 +485,15 @@ class FiddlerMixtral:
         return input_ids, position_ids
 
     @torch.no_grad()
-    def mixtral_forward(self, input_ids, position_ids, is_decode):
+    def mixtral_forward(self, input_ids, position_ids):
         hidden_dim = self.model.config.hidden_size
         inps = input_ids.to(self.dev)
         inps = self.model.embed_tokens(inps)
 
         for i_layer, layer in enumerate(self.model.layers):
+            layer_start = time.time()
             original_inps_shape = inps.shape
-
+            start_time = time.time()
             inps_residual = inps
             inps = layer.input_layernorm(inps)
             inps, self_attn_weights, present_key_value = layer.self_attn(
@@ -504,6 +507,7 @@ class FiddlerMixtral:
             inps_residual = inps
             inps = layer.post_attention_layernorm(inps)
             inps = inps.view(-1, hidden_dim)
+            print(f"Attention time:{time.time()-start_time}")
             # inps.shape: (batch_size*seq_len*embed_dim/hidden_dim, hidden_dim)
             router_logits = layer.block_sparse_moe.gate(inps)
             routing_weights = F.softmax(router_logits, dim=1)
@@ -513,10 +517,15 @@ class FiddlerMixtral:
             # selected_experts.shape: (batch_size*seq_len, 2)
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
 
+            # for top_2 in selected_experts:
+            #     for i in top_2:
+            #         self.expert_token_num[i_layer][i] += 1
+
             # intermediate variable to store the output of experts
             inps_after_experts = torch.zeros_like(inps, device=self.dev)
             experts = layer.block_sparse_moe.experts
 
+            start_time = time.time()
             if self.cpu_offload == 0:
                 # baseline: do everything at GPU
                 expert_mask = torch.nn.functional.one_hot(
@@ -569,7 +578,7 @@ class FiddlerMixtral:
                 cost_per_expert = np.zeros(
                     (len(experts), 2), dtype=float
                 )  # 0: CPU, 1: GPU
-
+                # hit_cnt = self.cnt_expert_hit
                 for i_expert in range(len(experts)):
                     idx, top_2 = torch.where(expert_mask[i_expert])
                     idxs.append(idx)
@@ -584,6 +593,8 @@ class FiddlerMixtral:
                         cost_per_expert[i_expert, 1] = 0
                         self.cnt_expert_hit += top_2.shape[0]
                     self.cnt_expert_all += top_2.shape[0]
+                # print("hit number of this layer:", self.cnt_expert_hit - hit_cnt)
+                # print("Number of tokens for each expert:", expert_tokens)
 
                 # second, partition experts processing between CPU and GPU so that we can minimize:
                 # max(sum of cost at CPU, sum of cost at GPU)
@@ -611,28 +622,7 @@ class FiddlerMixtral:
                         cpu_experts.append(i_expert)
                     else:
                         gpu_experts.append(i_expert)
-
-                def run_expert_in_thread():
-                    for i_expert in cpu_experts:
-                        top_2_list = top_2s[i_expert].tolist()
-                        idx_list = idxs[i_expert].tolist()
-                        current_state = inps[None, top_2_list].reshape(-1, hidden_dim)
-                        current_state = self.run_expert_at_cpu(
-                            i_layer,
-                            i_expert,
-                            current_state.to("cpu", non_blocking=True),
-                            routing_weights[top_2_list, idx_list, None].to(
-                                "cpu", non_blocking=True
-                            ),
-                        )
-                        inps_after_experts.index_add_(
-                            0,
-                            top_2s[i_expert].to(self.dev, non_blocking=True),
-                            current_state.to(self.dev, non_blocking=True),
-                        )
-
-                thread = threading.Thread(target=run_expert_in_thread)
-                thread.start()
+                # print(cpu_experts, gpu_experts)
 
                 for i_expert in gpu_experts:
                     top_2_list = top_2s[i_expert].tolist()
@@ -655,47 +645,30 @@ class FiddlerMixtral:
                         current_state.to(self.dev, non_blocking=True),
                     )
 
-                thread.join()
+                for i_expert in cpu_experts:
+                    top_2_list = top_2s[i_expert].tolist()
+                    idx_list = idxs[i_expert].tolist()
+                    current_state = inps[None, top_2_list].reshape(-1, hidden_dim)
+                    current_state = self.run_expert_at_cpu(
+                        i_layer,
+                        i_expert,
+                        current_state.to("cpu", non_blocking=True),
+                        routing_weights[top_2_list, idx_list, None].to(
+                            "cpu", non_blocking=True
+                        ),
+                    )
+                    inps_after_experts.index_add_(
+                        0,
+                        top_2s[i_expert].to(self.dev, non_blocking=True),
+                        current_state.to(self.dev, non_blocking=True),
+                    )
 
-            # else:
-            #     # decode stage with offloading
-            #     assert input_ids.shape[-1] == 1
-            #     expert_0, expert_1 = int(selected_experts[0][0]), int(
-            #         selected_experts[0][1]
-            #     )
-            #     routing_weights_0, routing_weights_1 = (
-            #         routing_weights[:, 0, None],
-            #         routing_weights[:, 1, None],
-            #     )
-
-            #     assert expert_0 != expert_1
-
-            #     self.cnt_expert_all += 2
-
-            #     if self.is_expert_in_gpu(i_layer, expert_0):
-            #         inps_after_experts += experts[expert_0](inps, routing_weights_0)
-            #         self.cnt_expert_hit += 1
-            #     else:
-            #         inps_after_experts += self.run_expert_at_cpu(
-            #             i_layer,
-            #             expert_0,
-            #             inps.to("cpu", non_blocking=True),
-            #             routing_weights_0.to("cpu", non_blocking=True),
-            #         ).to(self.dev, non_blocking=True)
-
-            #     if self.is_expert_in_gpu(i_layer, expert_1):
-            #         inps_after_experts += experts[expert_1](inps, routing_weights_1)
-            #         self.cnt_expert_hit += 1
-            #     else:
-            #         inps_after_experts += self.run_expert_at_cpu(
-            #             i_layer,
-            #             expert_1,
-            #             inps.to("cpu", non_blocking=True),
-            #             routing_weights_1.to("cpu", non_blocking=True),
-            #         ).to(self.dev, non_blocking=True)
-
+                expert_time = time.time() - start_time
+                print(f"Expert time: {expert_time}")
             # addition because there's residual connection over moe layer
             inps = inps_residual + inps_after_experts.reshape(original_inps_shape)
+            layer_time = time.time() - layer_start
+            print(f"Layer time: {layer_time}")
 
             # end of one layer
 
@@ -710,3 +683,11 @@ class FiddlerMixtral:
         return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
             inps, routing_weights
         )
+
+    def write_expert_hit_num(self, filename):
+        with open(filename, "w") as f:
+            for i_layer, expert_hit_num in enumerate(self.expert_token_num):
+                f.write(f"Layer {i_layer}\n")
+                for hit_num in expert_hit_num:
+                    f.write(f"{hit_num},")
+                f.write("\n")

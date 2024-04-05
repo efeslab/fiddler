@@ -1,8 +1,10 @@
 import argparse
 import os
 import utils
-
+import random
 from mixtral import FiddlerMixtral
+import torch
+import time
 
 
 def test_generate(args, text):
@@ -10,8 +12,9 @@ def test_generate(args, text):
     prefill_times = []
     decode_times = []
     hit_rates = []
-    batch_sizes = list(range(1, args.batch_size + 1))
-    for i in range(1, args.batch_size + 1):
+    # batch_sizes = list(range(1, args.batch_size + 1))
+    batch_sizes = [2**i for i in range(0, int(args.batch_size.bit_length()))]
+    for i in batch_sizes:
         texts = text * i
         prefill_time, decode_time, hit_rate = model.generate(
             texts, output_token=args.n_token
@@ -25,35 +28,72 @@ def test_generate(args, text):
     utils.plot(
         batch_sizes,
         prefill_times,
-        "beam-prefill_time-batch_size",
+        "rmthread-prefill_time-batch_size",
         "prefill_time(s)",
         "batch_size",
     )
     utils.plot(
         batch_sizes,
         decode_times,
-        "beam-decode_time-batch_size",
+        "rmthread-decode_time-batch_size",
         "decode_time(s)",
         "batch_size",
     )
 
 
-def test_pp(batch_size, prompt_num):
-    model = FiddlerMixtral(args)
-    text = ["University of Washington is"]
-    texts = text * prompt_num
-    batch_num = prompt_num // batch_size
-    total_prefill_time, total_decode_time = 0, 0
-    for i in range(batch_num):
-        batched_texts = texts[i * batch_size : (i + 1) * batch_size]
-        prefill_time, decode_time, hit_rate = model.generate(
-            batched_texts, output_token=args.n_token
+def test_pp(token_num, batch_size, model):
+    n_processed = 0
+    while n_processed < token_num:
+        n_tokens = min(batch_size, token_num - n_processed)
+        tokens = []
+        if n_processed == 0:
+            tokens.append(1)
+        else:
+            tokens.append(random.randint(0, model.vocab_size - 1))
+        for i in range(1, n_tokens):
+            tokens.append(random.randint(0, model.vocab_size - 1))
+        input_ids = torch.tensor(tokens, device=model.dev).unsqueeze(0)
+        position_ids = (
+            torch.arange(
+                n_processed,
+                n_processed + input_ids.shape[-1],
+                dtype=torch.long,
+                device=model.dev,
+            )
+            .unsqueeze(0)
+            .view(-1, input_ids.shape[-1])
         )
-        total_prefill_time += prefill_time
-        total_decode_time += decode_time
+        one_round_time = time.time()
+        logits = model.mixtral_forward(input_ids, position_ids)
+        print(f"one_round_time: {time.time()-one_round_time}")
+        n_processed += n_tokens
+    # if print_flag:
+    #     with open(f"../../results/test_pp.txt", "a") as f:
+    #         f.write(
+    #             f"prefill_time: {exec_time/repeat_num}, token_num:{token_num}, batch_size: {batch_size}, t/s:{token_num*repeat_num/exec_time}\n"
+    #         )
 
-    with open(f"../../results/pp_{batch_size}.txt", "a") as f:
-        f.write(f"prefill_time: {total_prefill_time}, decode_time: {total_decode_time}")
+
+def test_tg(token_num, model):
+    for j in range(token_num):
+        input_id = [random.randint(0, model.vocab_size - 1)]
+        input_ids = torch.tensor(input_id, device=model.dev).unsqueeze(0)
+        position_ids = (
+            torch.arange(
+                j,
+                j + 1,
+                dtype=torch.long,
+                device=model.dev,
+            )
+            .unsqueeze(0)
+            .view(-1, input_ids.shape[-1])
+        )
+        logits = model.mixtral_forward(input_ids, position_ids)
+    # if print_flag:
+    #     with open(f"../../results/test_tg.txt", "a") as f:
+    #         f.write(
+    #             f"decode_time: {exec_time/repeat_num}, output_token_num: {token_num}, t/s:{token_num*repeat_num/exec_time}\n"
+    # )
 
 
 if __name__ == "__main__":
@@ -87,26 +127,39 @@ if __name__ == "__main__":
         help="Number of tokens to generate.",
     )
     parser.add_argument(
-        "--batch-size",
+        "--batch_size",
         type=int,
         default=1,
         help="batch size for inference.",
     )
     parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
     parser.add_argument(
-        "--prompt_num", type=int, default=1, help="Number of input prompts."
+        "--token_num", type=int, default=128, help="Number of tokens to process."
     )
+    parser.add_argument("--repeat", type=int, default=1, help="Repeat times.")
 
     args = parser.parse_args()
-
-    # model = FiddlerMixtral(args)
-    text = ["University of Washington is"]
+    model = FiddlerMixtral(args)
+    # text = [
+    #     "The vertices of a triangle are at points (0, 0), (-1, 1), and (3, 3). What is the area of the triangle?"
+    # ]
     # test_generate(args, text)
     # prefill_time, decode_time, hit_rate = model.generate(
-    #     [args.input] * args.batch_size, output_token=args.n_token
+    # texts=text, output_token=args.n_token
     # )
+    # model.write_expert_hit_num("../../results/expert_hit_num.txt")
     # print(
-    #     f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+    # f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
     # )
 
-    test_pp(args.batch_size, args.prompt_num)
+    if args.token_num > 0:
+        test_pp(args.token_num, args.batch_size, model)
+    if args.n_token > 0:
+        test_tg(1, model)
+
+    for i in range(args.repeat):
+        torch.cuda.empty_cache()
+        if args.token_num > 0:
+            test_pp(args.token_num, args.batch_size, model)
+        if args.n_token > 0:
+            test_tg(args.n_token, model)
