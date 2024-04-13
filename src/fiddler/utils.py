@@ -2,6 +2,18 @@ from matplotlib import pyplot as plt
 import random
 
 
+categories = [
+    "writing",
+    "roleplay",
+    "reasoning",
+    "math",
+    "coding",
+    "extraction",
+    "stem",
+    "humanities",
+]
+
+
 def generate_inputid(model, num_tokens, batch_size):
     # Sample pool of words and punctuation
     # more words in words

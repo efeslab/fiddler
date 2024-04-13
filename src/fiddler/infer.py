@@ -1,44 +1,46 @@
 import argparse
 import os
-import utils
+
+# import utils
 import random
 from mixtral import FiddlerMixtral
 import torch
 import time
+import datasets
 
 
-def test_generate(args, text):
-    model = FiddlerMixtral(args)
-    prefill_times = []
-    decode_times = []
-    hit_rates = []
-    # batch_sizes = list(range(1, args.batch_size + 1))
-    batch_sizes = [2**i for i in range(0, int(args.batch_size.bit_length()))]
-    for i in batch_sizes:
-        texts = text * i
-        prefill_time, decode_time, hit_rate = model.generate(
-            texts, output_token=args.n_token
-        )
-        prefill_times.append(prefill_time)
-        decode_times.append(decode_time)
-        hit_rates.append(hit_rate)
-        print(
-            f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
-        )
-    utils.plot(
-        batch_sizes,
-        prefill_times,
-        "rmthread-prefill_time-batch_size",
-        "prefill_time(s)",
-        "batch_size",
-    )
-    utils.plot(
-        batch_sizes,
-        decode_times,
-        "rmthread-decode_time-batch_size",
-        "decode_time(s)",
-        "batch_size",
-    )
+# def test_generate(args, text):
+#     model = FiddlerMixtral(args)
+#     prefill_times = []
+#     decode_times = []
+#     hit_rates = []
+#     # batch_sizes = list(range(1, args.batch_size + 1))
+#     batch_sizes = [2**i for i in range(0, int(args.batch_size.bit_length()))]
+#     for i in batch_sizes:
+#         texts = text * i
+#         prefill_time, decode_time, hit_rate = model.generate(
+#             texts, output_token=args.n_token
+#         )
+#         prefill_times.append(prefill_time)
+#         decode_times.append(decode_time)
+#         hit_rates.append(hit_rate)
+#         print(
+#             f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+#         )
+#     utils.plot(
+#         batch_sizes,
+#         prefill_times,
+#         "rmthread-prefill_time-batch_size",
+#         "prefill_time(s)",
+#         "batch_size",
+#     )
+#     utils.plot(
+#         batch_sizes,
+#         decode_times,
+#         "rmthread-decode_time-batch_size",
+#         "decode_time(s)",
+#         "batch_size",
+#     )
 
 
 def test_pp(token_num, batch_size, model):
@@ -139,27 +141,54 @@ if __name__ == "__main__":
     parser.add_argument("--repeat", type=int, default=1, help="Repeat times.")
 
     args = parser.parse_args()
+    data = datasets.load_dataset(
+        "json",
+        data_files="https://huggingface.co/datasets/HuggingFaceH4/mt_bench_prompts/raw/main/raw/question.jsonl",
+        split="train",
+    )
+    categories = [
+        "writing",
+        "roleplay",
+        "reasoning",
+        "math",
+        "coding",
+        "extraction",
+        "stem",
+        "humanities",
+    ]
+    num_per_category = len(data) // len(categories)
     model = FiddlerMixtral(args)
+
+    # for i in range(len(categories)):
+    #     for j in range(num_per_category):
+    #         text = data[i * num_per_category + j]["prompt"][0]
+    #         prefill_time, decode_time, hit_rate = model.generate(
+    #             [text], output_token=args.n_token
+    #         )
+    #         print(
+    #             f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+    #         )
+    #     model.write_popular_experts(f"../../results/popularity/{categories[i]}.txt")
+    #     model.reset_popular_experts()
+
     # text = [
     #     "The vertices of a triangle are at points (0, 0), (-1, 1), and (3, 3). What is the area of the triangle?"
     # ]
     # test_generate(args, text)
-    # prefill_time, decode_time, hit_rate = model.generate(
-    # texts=text, output_token=args.n_token
-    # )
-    # model.write_expert_hit_num("../../results/expert_hit_num.txt")
-    # print(
-    # f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
-    # )
+    prefill_time, decode_time, hit_rate = model.generate(
+        [args.input], output_token=args.n_token
+    )
+    print(
+        f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+    )
+    # if args.token_num > 0:
+    #     test_pp(args.token_num, args.batch_size, model)
+    # if args.n_token > 0:
+    #     test_tg(1, model)
 
-    if args.token_num > 0:
-        test_pp(args.token_num, args.batch_size, model)
-    if args.n_token > 0:
-        test_tg(1, model)
-
-    for i in range(args.repeat):
-        torch.cuda.empty_cache()
-        if args.token_num > 0:
-            test_pp(args.token_num, args.batch_size, model)
-        if args.n_token > 0:
-            test_tg(args.n_token, model)
+    # for i in range(args.repeat):
+    #     torch.cuda.empty_cache()
+    #     if args.token_num > 0:
+    #         test_pp(args.token_num, args.batch_size, model)
+    #     if args.n_token > 0:
+    #         test_tg(args.n_token, model)

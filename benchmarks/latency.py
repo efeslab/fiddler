@@ -27,6 +27,13 @@ if __name__ == "__main__":
         choices=[0, 1],
         help="0: exeute at GPU (baseline), 1: offload to CPU.",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="batch size for inference.",
+    )
+    parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
 
     args = parser.parse_args()
 
@@ -58,15 +65,17 @@ if __name__ == "__main__":
                         # enough input length
                         break
                 prefill_time, decode_time, hit_rate = model.generate(
-                    text, output_token=output_token, input_token=input_token
+                    [text], output_token=output_token, input_token=input_token
                 )
                 prefill_time_sum += prefill_time
                 decode_time_sum += decode_time
                 hit_rate_sum += hit_rate
-            print(
-                f"input_token: {input_token}, output_token: {output_token}, "
-                f"prefill_time: {prefill_time_sum / n_sample}, "
-                f"decode_time: {decode_time_sum / n_sample}, "
-                f"hit_rate: {hit_rate_sum / n_sample},"
-                f"{output_token / (prefill_time_sum + decode_time_sum):.2f}token/s"
-            )
+            # write to file
+            with open("latency.txt", "a") as f:
+                f.write(
+                    f"input_token: {input_token}, output_token: {output_token}, "
+                    f"prefill_time: {prefill_time_sum / n_sample}, "
+                    f"decode_time: {decode_time_sum / n_sample}, "
+                    f"hit_rate: {hit_rate_sum / n_sample},"
+                    f"{output_token *n_sample/ (prefill_time_sum + decode_time_sum):.2f}token/s\n"
+                )
