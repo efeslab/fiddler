@@ -128,13 +128,7 @@ if __name__ == "__main__":
         default=20,
         help="Number of tokens to generate.",
     )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=1,
-        help="batch size for inference.",
-    )
-    parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
+    parser.add_argument("--beam_width", type=int, default=1, help="Beam search width.")
     parser.add_argument(
         "--token_num", type=int, default=128, help="Number of tokens to process."
     )
@@ -158,7 +152,7 @@ if __name__ == "__main__":
     ]
     num_per_category = len(data) // len(categories)
     model = FiddlerMixtral(args)
-
+    model.test_cpu_expert()
     # for i in range(len(categories)):
     #     for j in range(num_per_category):
     #         text = data[i * num_per_category + j]["prompt"][0]
@@ -175,12 +169,13 @@ if __name__ == "__main__":
     #     "The vertices of a triangle are at points (0, 0), (-1, 1), and (3, 3). What is the area of the triangle?"
     # ]
     # test_generate(args, text)
-    prefill_time, decode_time, hit_rate = model.generate(
-        [args.input], output_token=args.n_token
-    )
-    print(
-        f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
-    )
+    # prefill_time, decode_time, hit_rate = model.generate(
+    #     [args.input], output_token=args.n_token
+    # )
+    # print(
+    #     f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+    # )
+
     # if args.token_num > 0:
     #     test_pp(args.token_num, args.batch_size, model)
     # if args.n_token > 0:

@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import transformers
-from bfloat16_expert import CPUExpert
+from bfloat16_expert import cpu_expert
 
 
 class FiddlerMixtral:
@@ -37,8 +37,7 @@ class FiddlerMixtral:
         self.expert_token_num = np.zeros((self.n_layer, self.n_expert), dtype=int)
 
         self.cpu_experts = [[] for i in range(self.n_layer)]
-        self.beam_num = args.beam_num
-        self.batch_size = args.batch_size
+        self.beam_num = args.beam_width
 
         # TODO: find this value based on device config
         self.latency_cpu = 7
@@ -65,14 +64,31 @@ class FiddlerMixtral:
 
         print("Model is ready.")
 
+    def test_cpu_expert(self):
+        """Test CPU expert"""
+        i_layer = 1
+        i_expert = 1
+        inp = torch.rand((1, 4096), dtype=torch.bfloat16)
+        print(
+            "weight:",
+            self.model.layers[i_layer].block_sparse_moe.experts[i_expert].w1.weight[0],
+        )
+        routing_weights = torch.tensor([1], dtype=torch.bfloat16)
+        out1 = self.cpu_experts[i_layer][i_expert](inp)
+        out2 = self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
+            inp, routing_weights
+        )
+        delta = torch.abs(out1 - out2)
+        print(f"Max delta: {delta.max()}")
+
     def init_cpu_expert(self):
         """Initialize CPU expert"""
         for i in range(self.n_layer):
             for j in range(self.n_expert):
-                expert = CPUExpert(
-                    self.model.layers[i].block_sparse_moe.experts[j].w1.tolist(),
-                    self.model.layers[i].block_sparse_moe.experts[j].w2.tolist(),
-                    self.model.layers[i].block_sparse_moe.experts[j].w3.tolist(),
+                expert = cpu_expert(
+                    self.model.layers[i].block_sparse_moe.experts[j].w1.weight,
+                    self.model.layers[i].block_sparse_moe.experts[j].w2.weight,
+                    self.model.layers[i].block_sparse_moe.experts[j].w3.weight,
                 )
                 self.cpu_experts[i].append(expert)
 
@@ -478,10 +494,10 @@ class FiddlerMixtral:
         decode_time = time.time() - tick
         probs = probs.view(-1, self.beam_num)
         max_ids = torch.argmax(probs, dim=-1)
-        # for i in range(max_ids.shape[0]):
-        #     print("--------------------")
-        #     print(f"Input: {texts[i]}")
-        #     print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
+        for i in range(max_ids.shape[0]):
+            print("--------------------")
+            print(f"Input: {texts[i]}")
+            print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
         torch.cuda.empty_cache()
         return (
             prefill_time,
@@ -682,11 +698,11 @@ class FiddlerMixtral:
                         current_state.to(self.dev, non_blocking=True),
                     )
 
-                expert_time = time.time() - start_time
+                # expert_time = time.time() - start_time
                 # print(f"Expert time: {expert_time}")
             # addition because there's residual connection over moe layer
             inps = inps_residual + inps_after_experts.reshape(original_inps_shape)
-            layer_time = time.time() - layer_start
+            # layer_time = time.time() - layer_start
             # print(f"Layer time: {layer_time}")
 
             # end of one layer
@@ -699,9 +715,10 @@ class FiddlerMixtral:
 
     def run_expert_at_cpu(self, i_layer, i_expert, inps, routing_weights):
         """Run the expert at CPU"""
-        return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
-            inps, routing_weights
-        )
+        # return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
+        #     inps, routing_weights
+        # )
+        return self.cpu_experts[i_layer][i_expert](inps) * routing_weights
 
     def write_expert_hit_num(self, filename):
         with open(filename, "w") as f:

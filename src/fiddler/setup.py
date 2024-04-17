@@ -3,7 +3,7 @@ from setuptools import setup
 
 # include_dirs = cpp_extension.include_paths()
 # library_dirs = cpp_extension.library_paths()
-extra_compile_args = ["-fopenmp", "-mavx512bf16"]  # OpenMP and AVX512bf16 flags
+extra_compile_args = ["-fopenmp", "-mavx512bf16", "-O3"]  # OpenMP and AVX512bf16 flags
 
 ext_modules = [
     torch_cpp_ext.CppExtension(
