@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import transformers
-from bfloat16_expert import cpu_expert
 
 
 class FiddlerMixtral:
@@ -60,39 +59,7 @@ class FiddlerMixtral:
 
         self.bring_expert_to_gpu()
 
-        self.init_cpu_expert()
-
         print("Model is ready.")
-
-    def test_cpu_expert(self):
-        """Test CPU expert"""
-        i_layer = 1
-        i_expert = 1
-        inp = torch.rand((1, 4096), dtype=torch.bfloat16)
-        print(
-            "weight:",
-            self.model.layers[i_layer].block_sparse_moe.experts[i_expert].w1.weight[0],
-        )
-        routing_weights = torch.tensor([1], dtype=torch.bfloat16)
-        out1 = self.cpu_experts[i_layer][i_expert](inp) * routing_weights
-        print(out1)
-        out2 = self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
-            inp, routing_weights
-        )
-        print(out2)
-        delta = torch.abs(out1 - out2)
-        print(f"Max delta: {delta.max()}")
-
-    def init_cpu_expert(self):
-        """Initialize CPU expert"""
-        for i in range(self.n_layer):
-            for j in range(self.n_expert):
-                expert = cpu_expert(
-                    self.model.layers[i].block_sparse_moe.experts[j].w1.weight,
-                    self.model.layers[i].block_sparse_moe.experts[j].w2.weight,
-                    self.model.layers[i].block_sparse_moe.experts[j].w3.weight,
-                )
-                self.cpu_experts[i].append(expert)
 
     def bring_non_expert_to_gpu(self):
         """Bring non-expert layers to GPU"""
@@ -717,10 +684,9 @@ class FiddlerMixtral:
 
     def run_expert_at_cpu(self, i_layer, i_expert, inps, routing_weights):
         """Run the expert at CPU"""
-        # return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
-        #     inps, routing_weights
-        # )
-        return self.cpu_experts[i_layer][i_expert](inps) * routing_weights
+        return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
+            inps, routing_weights
+        )
 
     def write_expert_hit_num(self, filename):
         with open(filename, "w") as f:
