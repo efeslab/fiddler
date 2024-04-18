@@ -74,10 +74,12 @@ class FiddlerMixtral:
             self.model.layers[i_layer].block_sparse_moe.experts[i_expert].w1.weight[0],
         )
         routing_weights = torch.tensor([1], dtype=torch.bfloat16)
-        out1 = self.cpu_experts[i_layer][i_expert](inp)
+        out1 = self.cpu_experts[i_layer][i_expert](inp) * routing_weights
+        print(out1)
         out2 = self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
             inp, routing_weights
         )
+        print(out2)
         delta = torch.abs(out1 - out2)
         print(f"Max delta: {delta.max()}")
 

@@ -111,6 +111,16 @@ void convert_inp(std::vector<float> &inp, std::vector<bfloat16> &inp_bf)
 	}
 }
 
+float range_sum(float *start, int len)
+{
+	float sum = 0;
+	for (int i = 0; i < len; i++)
+	{
+		sum += start[i];
+	}
+	return sum;
+}
+
 class CPUExpert
 {
 public:
@@ -169,8 +179,8 @@ public:
 				gen_vdpbf16ps_api(&dst1[(i + 1) * 16], &inp[(i + 1) * 32], &w1[j][(i + 1) * 32]);
 				gen_vdpbf16ps_api(&dst1[(i + 2) * 16], &inp[(i + 2) * 32], &w1[j][(i + 2) * 32]);
 				gen_vdpbf16ps_api(&dst1[(i + 3) * 16], &inp[(i + 3) * 32], &w1[j][(i + 3) * 32]);
-
-				sum1 += dst1[(i + 0) * 16] + dst1[(i + 1) * 16] + dst1[(i + 2) * 16] + dst1[(i + 3) * 16];
+				sum1 += range_sum(&dst1[(i + 0) * 16], 64);
+				// sum1 += dst1[(i + 0) * 16] + dst1[(i + 1) * 16] + dst1[(i + 2) * 16] + dst1[(i + 3) * 16];
 			}
 
 			for (int i = 0; i < N_DIM / 32; i += 4)
@@ -180,8 +190,8 @@ public:
 				gen_vdpbf16ps_api(&dst3[(i + 1) * 16], &inp[(i + 1) * 32], &w3[j][(i + 1) * 32]);
 				gen_vdpbf16ps_api(&dst3[(i + 2) * 16], &inp[(i + 2) * 32], &w3[j][(i + 2) * 32]);
 				gen_vdpbf16ps_api(&dst3[(i + 3) * 16], &inp[(i + 3) * 32], &w3[j][(i + 3) * 32]);
-
-				sum3 += dst3[(i + 0) * 16] + dst3[(i + 1) * 16] + dst3[(i + 2) * 16] + dst3[(i + 3) * 16];
+				sum3 += range_sum(&dst3[(i + 0) * 16], 64);
+				// sum3 += dst3[(i + 0) * 16] + dst3[(i + 1) * 16] + dst3[(i + 2) * 16] + dst3[(i + 3) * 16];
 			}
 
 			in2[j] = float_to_bfloat16(silu(sum1) * sum3);
@@ -199,8 +209,8 @@ public:
 				gen_vdpbf16ps_api(&dst2[(i + 1) * 16], &in2[(i + 1) * 32], &w2[j][(i + 1) * 32]);
 				gen_vdpbf16ps_api(&dst2[(i + 2) * 16], &in2[(i + 2) * 32], &w2[j][(i + 2) * 32]);
 				gen_vdpbf16ps_api(&dst2[(i + 3) * 16], &in2[(i + 3) * 32], &w2[j][(i + 3) * 32]);
-
-				sum2 += dst2[(i + 0) * 16] + dst2[(i + 1) * 16] + dst2[(i + 2) * 16] + dst2[(i + 3) * 16];
+				sum2 += range_sum(&dst2[(i + 0) * 16], 64);
+				// sum2 += dst2[(i + 0) * 16] + dst2[(i + 1) * 16] + dst2[(i + 2) * 16] + dst2[(i + 3) * 16];
 			}
 			out[j] = sum2;
 		}
@@ -231,7 +241,7 @@ public:
 
 	torch::Tensor operator()(torch::Tensor &inp_tensor)
 	{
-		int num_threads = 1; // replace with your desired number of threads
+		int num_threads = 44; // replace with your desired number of threads
 		omp_set_num_threads(num_threads);
 		// Get the start time
 		// std::cout << "Start running expert" << std::endl;
@@ -248,8 +258,8 @@ public:
 		float *out = new float[token_num * N_DIM];
 		auto start = std::chrono::high_resolution_clock::now();
 
-		std::cout << "inp: " << inp[0] << std::endl;
-		std::cout << "w1: " << w1_[0] << std::endl;
+		// std::cout << "inp: " << inp[0] << std::endl;
+		// std::cout << "w1: " << w1_[0] << std::endl;
 #pragma omp parallel for
 		for (int j = 0; j < M_DIM; j++)
 		{
@@ -266,16 +276,16 @@ public:
 					gen_vdpbf16ps_api(&dst1[k][(i + 1) * 16], &inp[k * N_DIM + (i + 1) * 32], &w1_[j * N_DIM + (i + 1) * 32]);
 					gen_vdpbf16ps_api(&dst1[k][(i + 2) * 16], &inp[k * N_DIM + (i + 2) * 32], &w1_[j * N_DIM + (i + 2) * 32]);
 					gen_vdpbf16ps_api(&dst1[k][(i + 3) * 16], &inp[k * N_DIM + (i + 3) * 32], &w1_[j * N_DIM + (i + 3) * 32]);
-
-					sum1[k] += dst1[k][(i + 0) * 16] + dst1[k][(i + 1) * 16] + dst1[k][(i + 2) * 16] + dst1[k][(i + 3) * 16];
+					sum1[k] += range_sum(&dst1[k][(i + 0) * 16], 64);
+					// sum1[k] += dst1[k][(i + 0) * 16] + dst1[k][(i + 1) * 16] + dst1[k][(i + 2) * 16] + dst1[k][(i + 3) * 16];
 
 					// vdpbf16ps(&dst3[i * 16], &src1[i * 32], &src2[j][i * 32]);
 					gen_vdpbf16ps_api(&dst3[k][(i + 0) * 16], &inp[k * N_DIM + (i + 0) * 32], &w3_[j * N_DIM + (i + 0) * 32]);
 					gen_vdpbf16ps_api(&dst3[k][(i + 1) * 16], &inp[k * N_DIM + (i + 1) * 32], &w3_[j * N_DIM + (i + 1) * 32]);
 					gen_vdpbf16ps_api(&dst3[k][(i + 2) * 16], &inp[k * N_DIM + (i + 2) * 32], &w3_[j * N_DIM + (i + 2) * 32]);
 					gen_vdpbf16ps_api(&dst3[k][(i + 3) * 16], &inp[k * N_DIM + (i + 3) * 32], &w3_[j * N_DIM + (i + 3) * 32]);
-
-					sum3[k] += dst3[k][(i + 0) * 16] + dst3[k][(i + 1) * 16] + dst3[k][(i + 2) * 16] + dst3[k][(i + 3) * 16];
+					sum3[k] += range_sum(&dst3[k][(i + 0) * 16], 64);
+					// sum3[k] += dst3[k][(i + 0) * 16] + dst3[k][(i + 1) * 16] + dst3[k][(i + 2) * 16] + dst3[k][(i + 3) * 16];
 				}
 			}
 			for (int k = 0; k < token_num; k++)
@@ -297,8 +307,8 @@ public:
 					gen_vdpbf16ps_api(&dst2[k][(i + 1) * 16], &in2[k][(i + 1) * 32], &w2_[j * M_DIM + (i + 1) * 32]);
 					gen_vdpbf16ps_api(&dst2[k][(i + 2) * 16], &in2[k][(i + 2) * 32], &w2_[j * M_DIM + (i + 2) * 32]);
 					gen_vdpbf16ps_api(&dst2[k][(i + 3) * 16], &in2[k][(i + 3) * 32], &w2_[j * M_DIM + (i + 3) * 32]);
-
-					sum2[k] += dst2[k][(i + 0) * 16] + dst2[k][(i + 1) * 16] + dst2[k][(i + 2) * 16] + dst2[k][(i + 3) * 16];
+					sum2[k] += range_sum(&dst2[k][(i + 0) * 16], 64);
+					// sum2[k] += dst2[k][(i + 0) * 16] + dst2[k][(i + 1) * 16] + dst2[k][(i + 2) * 16] + dst2[k][(i + 3) * 16];
 				}
 			}
 			for (int k = 0; k < token_num; k++)
