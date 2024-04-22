@@ -1,57 +1,7 @@
 import argparse
 import os
 
-# import utils
-import random
 from mixtral import FiddlerMixtral
-import torch
-import time
-import datasets
-
-
-def test_pp(token_num, batch_size, model):
-    n_processed = 0
-    while n_processed < token_num:
-        n_tokens = min(batch_size, token_num - n_processed)
-        tokens = []
-        if n_processed == 0:
-            tokens.append(1)
-        else:
-            tokens.append(random.randint(0, model.vocab_size - 1))
-        for i in range(1, n_tokens):
-            tokens.append(random.randint(0, model.vocab_size - 1))
-        input_ids = torch.tensor(tokens, device=model.dev).unsqueeze(0)
-        position_ids = (
-            torch.arange(
-                n_processed,
-                n_processed + input_ids.shape[-1],
-                dtype=torch.long,
-                device=model.dev,
-            )
-            .unsqueeze(0)
-            .view(-1, input_ids.shape[-1])
-        )
-        one_round_time = time.time()
-        logits = model.mixtral_forward(input_ids, position_ids)
-        print(f"one_round_time: {time.time()-one_round_time}")
-        n_processed += n_tokens
-
-
-def test_tg(token_num, model):
-    for j in range(token_num):
-        input_id = [random.randint(0, model.vocab_size - 1)]
-        input_ids = torch.tensor(input_id, device=model.dev).unsqueeze(0)
-        position_ids = (
-            torch.arange(
-                j,
-                j + 1,
-                dtype=torch.long,
-                device=model.dev,
-            )
-            .unsqueeze(0)
-            .view(-1, input_ids.shape[-1])
-        )
-        logits = model.mixtral_forward(input_ids, position_ids)
 
 
 if __name__ == "__main__":
@@ -84,11 +34,7 @@ if __name__ == "__main__":
         default=20,
         help="Number of tokens to generate.",
     )
-    parser.add_argument("--beam_width", type=int, default=1, help="Beam search width.")
-    parser.add_argument(
-        "--token_num", type=int, default=128, help="Number of tokens to process."
-    )
-    parser.add_argument("--repeat", type=int, default=1, help="Repeat times.")
+    parser.add_argument("--beam-width", type=int, default=1, help="Beam search width.")
 
     args = parser.parse_args()
     model = FiddlerMixtral(args)

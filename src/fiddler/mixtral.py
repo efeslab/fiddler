@@ -21,7 +21,6 @@ class FiddlerMixtral:
         )
         self.lm_head = self.model.lm_head
         self.model = self.model.model
-        self.vocab_size = self.model.config.vocab_size
         self.expert_placeholder = copy.deepcopy(
             self.model.layers[0].block_sparse_moe.experts[0]
         ).to(self.dev)
@@ -425,7 +424,7 @@ class FiddlerMixtral:
 
             # normalize logits
             logits = F.softmax(logits, dim=-1)
-            # print(logits)
+
             # greedy search:
             # output = torch.argmax(logits, dim=-1)
 
@@ -490,9 +489,8 @@ class FiddlerMixtral:
         inps = self.model.embed_tokens(inps)
 
         for i_layer, layer in enumerate(self.model.layers):
-            layer_start = time.time()
             original_inps_shape = inps.shape
-            start_time = time.time()
+
             inps_residual = inps
             inps = layer.input_layernorm(inps)
             inps, self_attn_weights, present_key_value = layer.self_attn(
@@ -506,8 +504,6 @@ class FiddlerMixtral:
             inps_residual = inps
             inps = layer.post_attention_layernorm(inps)
             inps = inps.view(-1, hidden_dim)
-            # print(f"Attention time:{time.time()-start_time}")
-            start_time = time.time()
             # inps.shape: (batch_size*seq_len*embed_dim/hidden_dim, hidden_dim)
             router_logits = layer.block_sparse_moe.gate(inps)
             routing_weights = F.softmax(router_logits, dim=1)
@@ -516,17 +512,11 @@ class FiddlerMixtral:
             # routing_weights.shape: (batch_size*seq_len, 2)
             # selected_experts.shape: (batch_size*seq_len, 2)
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-            # print(f"Selection time:{time.time()-start_time}")
-
-            # for top_2 in selected_experts:
-            #     for i in top_2:
-            #         self.expert_token_num[i_layer][i] += 1
 
             # intermediate variable to store the output of experts
             inps_after_experts = torch.zeros_like(inps, device=self.dev)
             experts = layer.block_sparse_moe.experts
 
-            start_time = time.time()
             if self.cpu_offload == 0:
                 # baseline: do everything at GPU
                 expert_mask = torch.nn.functional.one_hot(
@@ -579,7 +569,6 @@ class FiddlerMixtral:
                 cost_per_expert = np.zeros(
                     (len(experts), 2), dtype=float
                 )  # 0: CPU, 1: GPU
-                # hit_cnt = self.cnt_expert_hit
                 for i_expert in range(len(experts)):
                     idx, top_2 = torch.where(expert_mask[i_expert])
                     idxs.append(idx)
@@ -594,9 +583,7 @@ class FiddlerMixtral:
                         cost_per_expert[i_expert, 1] = 0
                         self.cnt_expert_hit += top_2.shape[0]
                     self.cnt_expert_all += top_2.shape[0]
-                # print("hit number of this layer:", self.cnt_expert_hit - hit_cnt)
-                # print("Number of tokens for each expert:", expert_tokens)
-
+                
                 # second, partition experts processing between CPU and GPU so that we can minimize:
                 # max(sum of cost at CPU, sum of cost at GPU)
                 # greedy algorithm is just as there are only 8 experts for
@@ -623,7 +610,6 @@ class FiddlerMixtral:
                         cpu_experts.append(i_expert)
                     else:
                         gpu_experts.append(i_expert)
-                # print(cpu_experts, gpu_experts)
 
                 for i_expert in gpu_experts:
                     top_2_list = top_2s[i_expert].tolist()
@@ -667,12 +653,8 @@ class FiddlerMixtral:
                         current_state.to(self.dev, non_blocking=True),
                     )
 
-                # expert_time = time.time() - start_time
-                # print(f"Expert time: {expert_time}")
             # addition because there's residual connection over moe layer
             inps = inps_residual + inps_after_experts.reshape(original_inps_shape)
-            # layer_time = time.time() - layer_start
-            # print(f"Layer time: {layer_time}")
 
             # end of one layer
 
