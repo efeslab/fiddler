@@ -29,13 +29,10 @@ class FiddlerMixtral:
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
         self.cpu_offload = args.cpu_offload
-
+        self.beam_num = args.beam_width
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
-        self.expert_token_num = np.zeros((self.n_layer, self.n_expert), dtype=int)
-
-        self.cpu_experts = [[] for i in range(self.n_layer)]
-        self.beam_num = args.beam_width
+       
 
         # TODO: find this value based on device config
         self.latency_cpu = 7
@@ -373,30 +370,15 @@ class FiddlerMixtral:
         output_tensor = input_tensor[row_idx].view(-1, 1)
         return output_tensor
 
-    def generate(self, texts=None, output_token=20, input_token=None, input_ids=None):
+    def generate(self, texts=None, output_token=20, input_token=None):
         torch.set_num_threads(16)
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
 
         self.cnt_expert_hit = 0
         self.cnt_expert_all = 0
-
-        if input_ids is None:
-            input_ids = []
-            for text in texts:
-                input_id, position_id = self.tokenize(text)
-                for i in range(self.beam_num):
-                    input_ids.append(input_id[0])
-            input_ids = pad_sequence(
-                input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
-            ).to(self.dev)
-        else:
-            input_ids = input_ids.to(self.dev)
-        position_ids = (
-            torch.arange(0, input_ids.shape[-1], dtype=torch.long, device=self.dev)
-            .unsqueeze(0)
-            .view(-1, input_ids.shape[-1])
-        )
+        
+        input_ids, position_ids=self.tokenize(texts)
 
         # input_ids.shape: (batch_size, seq_len)
         # position_ids.shape: (1,seq_len)
@@ -413,6 +395,8 @@ class FiddlerMixtral:
         probs = torch.full((input_ids.shape[0], 1), 1.0)
 
         for i_token in range(output_token):
+            if self.beam_width==1:
+                print(self.tokenizer.decode(input_ids[0]))
             if is_decode:
                 for i in range(input_ids.shape[0]):
                     decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
@@ -466,16 +450,22 @@ class FiddlerMixtral:
             print("--------------------")
             print(f"Input: {texts[i]}")
             print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
-        torch.cuda.empty_cache()
         return (
             prefill_time,
             decode_time,
             self.cnt_expert_hit / self.cnt_expert_all,
         )
 
-    def tokenize(self, text):
-        encodings = self.tokenizer(text, return_tensors="pt")
-        input_ids = encodings.input_ids.to(self.dev)
+    def tokenize(self, texts):
+        input_ids = []
+        for text in texts:
+            encodings = self.tokenizer(text, return_tensors="pt")
+            input_id = encodings.input_ids.to(self.dev)
+            for i in range(self.beam_num):
+                input_ids.append(input_id[0])
+        input_ids = pad_sequence(
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        ).to(self.dev)
         position_ids = torch.arange(
             0, input_ids.shape[-1], dtype=torch.long, device=self.dev
         )
@@ -669,24 +659,3 @@ class FiddlerMixtral:
         return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
             inps, routing_weights
         )
-
-    def write_expert_hit_num(self, filename):
-        with open(filename, "w") as f:
-            for i_layer, expert_hit_num in enumerate(self.expert_token_num):
-                f.write(f"Layer {i_layer}\n")
-                for hit_num in expert_hit_num:
-                    f.write(f"{hit_num},")
-                f.write("\n")
-
-    def write_popular_experts(self, filename):
-        popular_experts = []
-        for i in range(self.n_layer):
-            for j in range(self.n_expert):
-                popular_experts.append((i, j, self.expert_token_num[i][j]))
-        popular_experts.sort(key=lambda x: x[2], reverse=True)
-        with open(filename, "w") as f:
-            for i, j, hit_num in popular_experts:
-                f.write(f"{i*self.n_expert+j},{hit_num}\n")
-
-    def reset_popular_experts(self):
-        self.expert_token_num = np.zeros((self.n_layer, self.n_expert), dtype=int)
