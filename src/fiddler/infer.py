@@ -3,6 +3,7 @@ import os
 
 from mixtral import FiddlerMixtral
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -33,9 +34,9 @@ if __name__ == "__main__":
         default=20,
         help="Number of tokens to generate.",
     )
+    parser.add_argument("--beam-width", type=int, default=1, help="Beam search width.")
 
     args = parser.parse_args()
-
     model = FiddlerMixtral(args)
     prefill_time, decode_time, hit_rate = model.generate(
         args.input, output_token=args.n_token
