@@ -29,7 +29,7 @@ class FiddlerMixtral:
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
         self.cpu_offload = args.cpu_offload
-        self.beam_num = args.beam_width
+        self.beam_width = args.beam_width
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
        
@@ -361,11 +361,11 @@ class FiddlerMixtral:
         return int((free_mem) // (n_param * 2))
 
     def initial_beam_tensor(self, input_tensor):
-        # transfer tensor of shape (batch_size*beam_num, seq_len, beam_num) to (batch_size*beam_num, 1) properly
-        assert input_tensor.shape[-1] == self.beam_num
+        # transfer tensor of shape (batch_size*beam_width, seq_len, beam_width) to (batch_size*beam_width, 1) properly
+        assert input_tensor.shape[-1] == self.beam_width
         input_tensor = input_tensor[:, -1]
         row_idx = torch.tensor(
-            [i * self.beam_num for i in range(input_tensor.shape[0] // self.beam_num)]
+            [i * self.beam_width for i in range(input_tensor.shape[0] // self.beam_width)]
         )
         output_tensor = input_tensor[row_idx].view(-1, 1)
         return output_tensor
@@ -418,7 +418,7 @@ class FiddlerMixtral:
                 new_probs, output = torch.topk(logits, 1, dim=-1)
                 new_probs = new_probs[:, -1].flatten().view(-1, 1)
             else:
-                new_probs, output = torch.topk(logits, self.beam_num, dim=-1)
+                new_probs, output = torch.topk(logits, self.beam_width, dim=-1)
                 new_probs = self.initial_beam_tensor(new_probs)
                 output = self.initial_beam_tensor(output)
                 search_start = True
@@ -444,12 +444,12 @@ class FiddlerMixtral:
                 tick = time.time()
             is_decode = True
         decode_time = time.time() - tick
-        probs = probs.view(-1, self.beam_num)
+        probs = probs.view(-1, self.beam_width)
         max_ids = torch.argmax(probs, dim=-1)
         for i in range(max_ids.shape[0]):
             print("--------------------")
             print(f"Input: {texts[i]}")
-            print(f"Output: {decode_strings[i * self.beam_num + max_ids[i]]}")
+            print(f"Output: {decode_strings[i * self.beam_width + max_ids[i]]}")
         return (
             prefill_time,
             decode_time,
@@ -461,7 +461,7 @@ class FiddlerMixtral:
         for text in texts:
             encodings = self.tokenizer(text, return_tensors="pt")
             input_id = encodings.input_ids.to(self.dev)
-            for i in range(self.beam_num):
+            for i in range(self.beam_width):
                 input_ids.append(input_id[0])
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
