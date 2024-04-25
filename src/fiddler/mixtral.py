@@ -357,7 +357,7 @@ class FiddlerMixtral:
         )
         # get the amount of free memory on GPU
         total_mem = torch.cuda.get_device_properties(self.dev).total_memory
-        free_mem = total_mem * 0.95 - torch.cuda.memory_allocated(self.dev)
+        free_mem = total_mem * 0.95 - torch.cuda.memory_allocated(self.dev) # TODO: magic number
         return int((free_mem) // (n_param * 2))
 
     def initial_beam_tensor(self, input_tensor):
@@ -371,7 +371,7 @@ class FiddlerMixtral:
         return output_tensor
 
     def generate(self, texts=None, output_token=20, input_token=None):
-        torch.set_num_threads(16)
+        torch.set_num_threads(16) # TODO: set appropriately
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
 
@@ -395,8 +395,9 @@ class FiddlerMixtral:
         probs = torch.full((input_ids.shape[0], 1), 1.0)
 
         for i_token in range(output_token):
-            if self.beam_width==1:
+            if self.beam_width == 1:
                 print(self.tokenizer.decode(input_ids[0]))
+                # TODO: streaming output for beam search
             if is_decode:
                 for i in range(input_ids.shape[0]):
                     decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
@@ -576,8 +577,7 @@ class FiddlerMixtral:
                 
                 # second, partition experts processing between CPU and GPU so that we can minimize:
                 # max(sum of cost at CPU, sum of cost at GPU)
-                # greedy algorithm is just as there are only 8 experts for
-                # Mixtral
+                # greedy algorithm is just as there are only 8 experts for Mixtral
                 best_config = -1
                 best_cost = float("inf")
                 for config in range(1 << len(experts)):
@@ -626,7 +626,6 @@ class FiddlerMixtral:
                     top_2_list = top_2s[i_expert].tolist()
                     idx_list = idxs[i_expert].tolist()
                     current_state = inps[None, top_2_list].reshape(-1, hidden_dim)
-                    # cpu_start = time.time()
                     current_state = self.run_expert_at_cpu(
                         i_layer,
                         i_expert,
@@ -635,8 +634,6 @@ class FiddlerMixtral:
                             "cpu", non_blocking=True
                         ),
                     )
-                    # if len(top_2_list) == 1:
-                    #     print(f"CPU time: {time.time()-cpu_start}")
                     inps_after_experts.index_add_(
                         0,
                         top_2s[i_expert].to(self.dev, non_blocking=True),
