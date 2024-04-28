@@ -543,9 +543,7 @@ class FiddlerMixtral:
                     )
 
                     if not is_cuda:
-                        experts[i_expert] = experts[i_expert].to(
-                            "cpu", non_blocking=True
-                        )
+                        experts[i_expert] = experts[i_expert].to("cpu")
 
                     # end of one expert
 
@@ -629,10 +627,8 @@ class FiddlerMixtral:
                     current_state = self.run_expert_at_cpu(
                         i_layer,
                         i_expert,
-                        current_state.to("cpu", non_blocking=True),
-                        routing_weights[top_2_list, idx_list, None].to(
-                            "cpu", non_blocking=True
-                        ),
+                        current_state.to("cpu"),
+                        routing_weights[top_2_list, idx_list, None].to("cpu"),
                     )
                     inps_after_experts.index_add_(
                         0,
