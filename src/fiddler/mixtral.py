@@ -12,7 +12,7 @@ import transformers
 class FiddlerMixtral:
     def __init__(self, args):
         self.dtype = torch.bfloat16
-        self.dev = torch.device("cuda:0")
+        self.dev = torch.device("cuda:1")
         self.model = transformers.MixtralForCausalLM.from_pretrained(
             args.model,
             torch_dtype=self.dtype,
@@ -33,6 +33,11 @@ class FiddlerMixtral:
         self.n_layer = len(self.model.layers)
         self.n_expert = len(self.model.layers[0].block_sparse_moe.experts)
        
+        if args.profile_popularity:
+           # create a list of list, the outer list has n_layer elements, and the inner list has n_expert elements
+            self.expert_popularity = [[0 for _ in range(self.n_expert)] for _ in range(self.n_layer)]
+        else:
+            self.expert_popularity = None
 
         # TODO: find this value based on device config
         self.latency_cpu = 7
@@ -503,6 +508,12 @@ class FiddlerMixtral:
             # routing_weights.shape: (batch_size*seq_len, 2)
             # selected_experts.shape: (batch_size*seq_len, 2)
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+            
+            if self.expert_popularity is not None:
+                for i in range(selected_experts.shape[0]):
+                    for j in range(selected_experts.shape[1]):
+                        i_expert = selected_experts[i, j]
+                        self.expert_popularity[i_layer][i_expert] += 1
 
             # intermediate variable to store the output of experts
             inps_after_experts = torch.zeros_like(inps, device=self.dev)
@@ -652,3 +663,11 @@ class FiddlerMixtral:
         return self.model.layers[i_layer].block_sparse_moe.experts[i_expert](
             inps, routing_weights
         )
+        
+    def get_expert_popularity(self):
+        if self.expert_popularity is None:
+            print("Warning: Expert popularity is not profiled, enable `--profile-popularity` option.")
+        return self.expert_popularity
+    
+    def reset_expert_popularity(self):
+        self.expert_popularity = [[0 for _ in range(self.n_expert)] for _ in range(self.n_layer)]
