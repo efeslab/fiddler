@@ -95,32 +95,33 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model = FiddlerMixtral(args)
     num_threads = [2 * i + 8 for i in range(9)]
-    prefill_time, decode_time, hit_rate = model.generate(
-        texts=[args.input], output_token=args.n_token
-    )
-    # prefill_time, decode_time, hit_rate = model.generate(
-    #     texts=[args.input], output_token=args.n_token
+    for i in range(args.repeat):
+        prefill_time, decode_time, hit_rate = model.generate(
+            texts=[args.input], output_token=args.n_token
+        )
+        # prefill_time, decode_time, hit_rate = model.generate(
+        #     texts=[args.input], output_token=args.n_token
+        # )
+        # print(model.cpu_token_num)
+        print(
+            f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
+        )
+    # print("         | Average value | Variation | Portion")
+    # print(
+    #     f"OneToken | {sum(model.one_token_time)/len(model.one_token_time):.2f} | {np.var(model.one_token_time):.2f}"
     # )
-    # print(model.cpu_token_num)
-    print(
-        f"prefill_time: {prefill_time}, decode_time: {decode_time}, hit_rate: {hit_rate}"
-    )
-    print("         | Average value | Variation | Portion")
-    print(
-        f"OneToken | {sum(model.one_token_time)/len(model.one_token_time):.2f} | {np.var(model.one_token_time):.2f}"
-    )
-    print(
-        f"CPUExpert | {sum(model.cpu_expert_time)/len(model.cpu_expert_time)*10**6:.2f} | {np.var(model.cpu_expert_time)*10**6:.2f} | {sum(model.cpu_expert_time)/(decode_time+prefill_time):.2f}"
-    )
-    print(
-        f"GPUExpert | {sum(model.gpu_expert_time)/len(model.gpu_expert_time)*10**6:.2f} | {np.var(model.gpu_expert_time)*10**6:.2f} | {sum(model.gpu_expert_time)/(decode_time+prefill_time):.2f}"
-    )
-    print(
-        f"Attention | {sum(model.attention_time)/len(model.attention_time)*10**6:.2f} | {np.var(model.attention_time)*10**6:.2f} | {sum(model.attention_time)/(decode_time+prefill_time):.2f}"
-    )
-    print(
-        f"Selection | {sum(model.selection_time)/len(model.selection_time)*10**6:.2f} | {np.var(model.selection_time)*10**6:.2f} | {sum(model.selection_time)/(decode_time+prefill_time):.2f}"
-    )
-    print(
-        f"Optconfig | {sum(model.search_config_time)/len(model.search_config_time)*10**6:.2f} | {np.var(model.search_config_time)*10**6:.2f} | {sum(model.search_config_time)/(decode_time+prefill_time):.2f}"
-    )
+    # print(
+    #     f"CPUExpert | {sum(model.cpu_expert_time)/len(model.cpu_expert_time)*10**6:.2f} | {np.var(model.cpu_expert_time)*10**6:.2f} | {sum(model.cpu_expert_time)/(decode_time+prefill_time):.2f}"
+    # )
+    # print(
+    #     f"GPUExpert | {sum(model.gpu_expert_time)/len(model.gpu_expert_time)*10**6:.2f} | {np.var(model.gpu_expert_time)*10**6:.2f} | {sum(model.gpu_expert_time)/(decode_time+prefill_time):.2f}"
+    # )
+    # print(
+    #     f"Attention | {sum(model.attention_time)/len(model.attention_time)*10**6:.2f} | {np.var(model.attention_time)*10**6:.2f} | {sum(model.attention_time)/(decode_time+prefill_time):.2f}"
+    # )
+    # print(
+    #     f"Selection | {sum(model.selection_time)/len(model.selection_time)*10**6:.2f} | {np.var(model.selection_time)*10**6:.2f} | {sum(model.selection_time)/(decode_time+prefill_time):.2f}"
+    # )
+    # print(
+    #     f"Optconfig | {sum(model.search_config_time)/len(model.search_config_time)*10**6:.2f} | {np.var(model.search_config_time)*10**6:.2f} | {sum(model.search_config_time)/(decode_time+prefill_time):.2f}"
+    # )
