@@ -80,7 +80,7 @@ def init_mixtral_offload():
 
     ##### Change this to 5 if you have only 12 GB of GPU VRAM #####
     # offload_per_layer = 4
-    offload_per_layer = 7
+    offload_per_layer = 5
     ###############################################################
 
     num_experts = config.num_local_experts
