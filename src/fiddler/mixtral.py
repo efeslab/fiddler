@@ -10,8 +10,6 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import transformers
 from bfloat16_expert import cpu_expert
-import flashinfer
-from attention import SelfAttention
 
 
 class FiddlerMixtral:
@@ -34,12 +32,6 @@ class FiddlerMixtral:
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(args.model)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        workspace_buffer = torch.empty(
-            16 * 1024 * 1024, dtype=torch.uint8, device="cuda:0"
-        )
-        self.prefill_wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
-            workspace_buffer, "NHD"
-        )
         self.past_key_value = transformers.cache_utils.DynamicCache.from_legacy_cache()
         self.past_key_values_length = 0
 
@@ -56,9 +48,6 @@ class FiddlerMixtral:
 
         self.torch_threads = args.torch_threads
         self.cpp_threads = args.cpp_threads
-        # TODO: find this value based on device config
-        self.latency_cpu = 7
-        self.latency_gpu = 40
 
         self.cpu_token_num = 0
         self.cnt_expert_hit = 0
@@ -70,6 +59,14 @@ class FiddlerMixtral:
         self.search_config_time = []
         self.one_token_time = []
 
+        self.init_cpu_expert()
+
+        self.cpu_latency = np.mean(self.expert_cpu(1, 1)) * 10**3
+        self.copy_latency = np.mean(self.weight_copy()) * 10**3
+        self.gpu_latency = np.mean(self.expert_gpu(n_expert=1, batch_size=4)) * 10**3
+        # self.cpu_latency = 7
+        # self.copy_latency = 40
+        # self.gpu_latency = 0.6
         # self.init_attention()
 
         self.bring_non_expert_to_gpu()
@@ -85,11 +82,123 @@ class FiddlerMixtral:
         # print(self.expert_loc)
 
         self.bring_expert_to_gpu()
-
         self.init_cpu_expert()
         self.pin_expert_in_cpu()
 
         print("Model is ready.")
+
+    def set_cpu_cost_model(self):
+        batch_sizes = [1] + [4 * i for i in range(1, 2**4 + 1)]
+        latency = []
+        for batch_size in batch_sizes:
+            latency.append(
+                np.mean(self.expert_cpu(n_expert=1, batch_size=batch_size)) * 10**3
+            )
+        # using polynomial regression to fit the latency
+        latency = np.array(latency)
+        x = np.array(batch_sizes)
+        X = np.vstack([x, np.ones(len(x))]).T
+
+        # Calculate the least-squares solution
+        a, b = np.linalg.lstsq(X, latency, rcond=None)[0]
+        return a, b
+
+    # def cpu_latency(self, batch_size):
+    #     if batch_size == 0:
+    #         return 0
+    #     return self.cpu_latency_a * batch_size + self.cpu_latency_b
+
+    # def set_latency():
+    def weight_copy(self):
+        """Time to copy weights of an expert"""
+        torch.set_num_threads(self.torch_threads)
+        ret_time = []
+
+        expert_placeholder = copy.deepcopy(
+            self.model.layers[0].block_sparse_moe.experts[0]
+        ).to(self.dev)
+        for i in range(32):
+            self.model.layers[i].block_sparse_moe.experts[0].to("cpu")
+            for name in ["w1", "w2", "w3"]:
+                w = getattr(self.model.layers[i].block_sparse_moe.experts[0], name)
+                src_weight_data_tensor = w.weight.data
+                pinned = src_weight_data_tensor.pin_memory()
+                w.weight.data = pinned
+            torch.cuda.synchronize()
+            tick = time.time()
+            # expert_placeholder.load_state_dict(
+            #     model.model.layers[i].block_sparse_moe.experts[0].state_dict()
+            # )
+            for name in ["w1", "w2", "w3"]:
+                dst = getattr(expert_placeholder, name).weight.data
+                src = getattr(
+                    self.model.layers[i].block_sparse_moe.experts[0], name
+                ).weight.data
+                dst.copy_(src)
+            torch.cuda.synchronize()
+            ret_time.append(time.time() - tick)
+            self.model.layers[i].block_sparse_moe.experts[0].to("cpu")
+        return np.array(ret_time)
+
+    def expert_gpu(self, n_expert=1, batch_size=1):
+        """Time to execute an expert at GPU"""
+        torch.set_num_threads(self.torch_threads)
+        ret_time = []
+
+        # warm up
+        self.model.layers[0].block_sparse_moe.experts[7].to(self.dev)
+        inps = torch.randn((batch_size, 4096), dtype=self.dtype, device=self.dev)
+        weights = torch.ones((batch_size, 1), dtype=self.dtype, device=self.dev)
+        inps = self.model.layers[0].block_sparse_moe.experts[7](inps, weights)
+        self.model.layers[0].block_sparse_moe.experts[7].to("cpu")
+        del inps, weights
+        torch.cuda.synchronize()
+
+        for i in range(32):
+            for j in range(n_expert):
+                self.model.layers[i].block_sparse_moe.experts[j].to(self.dev)
+                inps = torch.randn(
+                    (batch_size, 4096), dtype=self.dtype, device=self.dev
+                )
+                weights = torch.randn(
+                    (batch_size, 1), dtype=self.dtype, device=self.dev
+                )
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                tick = time.time()
+                inps = self.model.layers[i].block_sparse_moe.experts[j](inps, weights)
+                torch.cuda.synchronize()
+                ret_time.append(time.time() - tick)
+                self.model.layers[i].block_sparse_moe.experts[j].to("cpu")
+                del inps, weights
+        return np.array(ret_time)
+
+    def expert_cpu(self, n_expert=1, batch_size=1, multithreading=False):
+        """Time to execute an expert at CPU"""
+        torch.set_num_threads(self.torch_threads)
+        ret_time = []
+        # warm up
+        self.model.layers[0].block_sparse_moe.experts[7].to("cpu")
+        inps = torch.randn((batch_size, 4096), dtype=self.dtype, device="cpu")
+        weights = torch.ones((batch_size, 1), dtype=self.dtype, device="cpu")
+        torch.cuda.synchronize()
+        tick = time.time()
+        inps = self.run_expert_at_cpu(0, 7, inps, weights)
+        del inps, weights
+        torch.cuda.synchronize()
+
+        for i in range(32):
+            for j in range(n_expert):
+                self.model.layers[i].block_sparse_moe.experts[j].to("cpu")
+                inps = torch.randn((batch_size, 4096), dtype=self.dtype, device="cpu")
+                weights = torch.randn((batch_size, 1), dtype=self.dtype, device="cpu")
+                torch.cuda.synchronize()
+                tick = time.time()
+                inps = self.run_expert_at_cpu(i, j, inps, weights)
+                torch.cuda.synchronize()
+                ret_time.append(time.time() - tick)
+                del inps, weights
+        return np.array(ret_time)
 
     def test_cpu_expert(self):
         """Test CPU expert"""
@@ -153,13 +262,6 @@ class FiddlerMixtral:
         # print(out2)
         # delta = torch.abs(out1 - out2)
         # print(f"Max delta: {delta.max()}")
-
-    def init_attention(self):
-        """Initialize attention"""
-        for i in range(self.n_layer):
-            self.model.layers[i].self_attn = SelfAttention(
-                self.model.config, self.model.layers[i].self_attn
-            )
 
     def init_cpu_expert(self):
         """Initialize CPU expert"""
@@ -529,38 +631,6 @@ class FiddlerMixtral:
         self.beam_width = beam_width
         input_ids, position_ids = self.tokenize(texts)
 
-        # self.page_size = 16
-        # self.max_num_pages = self.beam_width * (
-        #     (input_ids.shape[-1] + output_token) // self.page_size + 1
-        # )
-        # self.num_kv_heads = self.model.config.num_key_value_heads
-        # self.num_qo_heads = self.model.config.num_attention_heads
-        # self.head_dim = self.model.config.hidden_size // self.num_qo_heads
-        # self.kv_data_at_layer = [
-        #     torch.randn(
-        #         self.max_num_pages,
-        #         2,
-        #         self.page_size,
-        #         self.num_kv_heads,
-        #         self.head_dim,
-        #         dtype=torch.float16,
-        #         device="cuda:0",
-        #     )
-        #     for _ in range(self.n_layer)
-        # ]
-        # self.kv_indptr = torch.tensor(
-        #     [i for i in range(self.beam_width + 1)],
-        #     dtype=torch.int32,
-        #     device="cuda:0",
-        # )
-        # self.kv_indices = torch.tensor(
-        #     [i for i in range(self.beam_width)],
-        #     dtype=torch.int32,
-        #     device="cuda:0",
-        # )
-        # self.kv_last_page_len = torch.tensor(
-        #     [0 for i in range(self.beam_width)], dtype=torch.int32, device="cuda:0"
-        # )
         if input_token is not None:
             input_ids = input_ids[:, :input_token]
             position_ids = position_ids[:, :input_token]
@@ -578,12 +648,6 @@ class FiddlerMixtral:
                     decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
                     # print("--------------------")
                     # print(f"beam[{i}]: {decode_strings[i]}")
-
-            # self.qo_indptr = torch.tensor(
-            #     [i * input_ids.shape[-1] for i in range(self.beam_width + 1)],
-            #     dtype=torch.int32,
-            #     device="cuda:0",
-            # )
 
             logits = self.mixtral_forward(
                 input_ids,
@@ -700,36 +764,11 @@ class FiddlerMixtral:
         # outliner_num = 0
         # outliners = []
 
-        # self.prefill_wrapper.begin_forward(
-        #     self.qo_indptr,
-        #     self.kv_indptr,
-        #     self.kv_indices,
-        #     self.kv_last_page_len,
-        #     self.num_qo_heads,
-        #     self.num_kv_heads,
-        #     self.head_dim,
-        # )
-        # print("--------------------")
-        # print(self.qo_indptr, self.kv_indptr, self.kv_indices, self.kv_last_page_len)
-
         for i_layer, layer in enumerate(self.model.layers):
             original_inps_shape = inps.shape
             inps_residual = inps
             # start_time = time.time()
             inps = layer.input_layernorm(inps)
-            # (
-            #     inps,
-            #     new_paged_kv_data,
-            #     new_kv_indptr,
-            #     new_kv_indices,
-            #     new_kv_last_page_len,
-            # ) = layer.self_attn.forward(
-            #     inps,
-            #     self.kv_data_at_layer[i_layer],
-            #     self.qo_indptr,
-            #     self.prefill_wrapper,
-            # )
-            # self.kv_data_at_layer[i_layer] = new_paged_kv_data
 
             inps, self_attn_weights, present_key_value = layer.self_attn(
                 inps,
@@ -827,12 +866,12 @@ class FiddlerMixtral:
                     top_2s.append(top_2)
                     # expected latency at CPU: number of token * cost_at_cpu
                     # expected latency at GPU: cost_at_gpu (constant)
-                    cpu_cost = top_2.shape[0] * self.latency_cpu
-                    gpu_cost = self.latency_gpu + cpu_cost * 0.1
+                    cpu_cost = self.cpu_latency * top_2.shape[0]
+                    gpu_cost = self.copy_latency + self.gpu_latency
                     if self.is_expert_in_gpu(i_layer, i_expert):
                         # if the expert is in GPU, the latency at GPU is
                         # approximately 0
-                        gpu_cost = cpu_cost * 0.1
+                        gpu_cost = self.gpu_latency
                         self.cnt_expert_hit += top_2.shape[0]
                     self.cnt_expert_all += top_2.shape[0]
                     if cpu_cost <= gpu_cost:
@@ -976,13 +1015,7 @@ class FiddlerMixtral:
         # self.outliners.extend(outliners)
         inps = self.model.norm(inps)
         lm_logis = self.lm_head(inps)
-        # self.prefill_wrapper.end_forward()
         self.past_key_value = present_key_value
-        # print("//////////////////////")
-        # print(new_kv_indptr, new_kv_indices, new_kv_last_page_len)
-        # self.kv_indptr = new_kv_indptr
-        # self.kv_indices = new_kv_indices
-        # self.kv_last_page_len = new_kv_last_page_len
 
         return lm_logis
 
