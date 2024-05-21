@@ -130,7 +130,7 @@ def eval(model, prefill=False):
 
     device = torch.device("cuda:0")
 
-    path_json = '/home/yilegu/fiddler/benchmarks/datasets/ShareGPT_V3_unfiltered_cleaned_split.json'
+    path_json = '/home/yilegu/fiddler/benchmarks/mixtral_offloading/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
     with open(path_json, 'r') as f:
         data = json.load(f)
     texts = []
@@ -158,9 +158,12 @@ def eval(model, prefill=False):
     
     # input_lengths = [16, 32, 64, 128]
     # output_lengths = [16, 32, 64, 128, 256, 512]
-    input_lengths = [64, 128, 256, 512]
+    # input_lengths = [64, 128, 256, 512]
+    # output_lengths = [64, 128, 256, 512] if not prefill else [1]
+    input_lengths = [512]
     output_lengths = [64, 128, 256, 512] if not prefill else [1]
-    batch_sizes = [1, 2, 4, 8, 16]
+    # batch_sizes = [1, 2, 4, 8, 16]
+    batch_sizes = [1, 2, 4]
     for input_token in input_lengths:
         for output_token in output_lengths:
             for batch_size in batch_sizes:
