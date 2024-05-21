@@ -144,7 +144,7 @@ def eval(model, prefill=False):
     random.seed(0)
     random.shuffle(texts)
 
-    n_sample = 1
+    n_sample = 3
     
     # open a csv file to save the results
     timestamp = pd.Timestamp.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -158,9 +158,13 @@ def eval(model, prefill=False):
     
     # input_lengths = [16, 32, 64, 128]
     # output_lengths = [16, 32, 64, 128, 256, 512]
-    input_lengths = [64, 128, 256, 512]
+    # input_lengths = [64, 128, 256, 512]
+    # input_lengths = [256, 512, 1024, 2048, 4096]
+    input_lengths = [32, 64, 128, 256, 512]
+    # input_lengths = [8192]
     output_lengths = [64, 128, 256, 512] if not prefill else [1]
-    batch_sizes = [1, 2, 4, 8, 16]
+    # batch_sizes = [1, 2, 4, 8, 16]
+    batch_sizes = [1]
     for input_token in input_lengths:
         for output_token in output_lengths:
             for batch_size in batch_sizes:
