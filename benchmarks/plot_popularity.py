@@ -5,7 +5,7 @@ import numpy as np
 subjects = ['high_school_us_history', 'high_school_biology', 'college_computer_science', 'machine_learning', 'college_medicine', 'international_law', 'high_school_mathematics']
 fig, axes = plt.subplots(len(subjects), 1, figsize=(10, 15), sharex=True)
 for subject, ax in zip(subjects, axes):
-    with open(f"results/popularity/expert_popularity_{subject}.json", "r") as f:
+    with open(f"results/popularity/mixtral_8x7b_original/expert_popularity_{subject}.json", "r") as f:
         results = json.load(f)
         # print(f"Expert popularity for {subject}: {results}")
         expert_popularity = results["expert_popularity"]
@@ -25,4 +25,4 @@ for subject, ax in zip(subjects, axes):
     ax.set_xlim(0, num_elayers)
     ax.title.set_text(subject)
 fig.tight_layout()
-# fig.savefig("results/popularity/expert_popularity.png")
+fig.savefig("results/popularity/mixtral_8x7b_original/sorted_expert_popularity.png")
