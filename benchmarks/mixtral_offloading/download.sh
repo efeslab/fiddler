@@ -5,32 +5,32 @@ source ~/miniconda3/bin/activate  mixtral-offloading
 
 mkdir -p Mixtral-8x7B-Instruct-v0.1
 cd Mixtral-8x7B-Instruct-v0.1
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/config.json?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/generation_config.json?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00001-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00002-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00003-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00004-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00005-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00006-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00007-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00008-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00009-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00010-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00011-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00012-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00013-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00014-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00015-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00016-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00017-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00018-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00019-of-00019.safetensors?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model.safetensors.index.json?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/special_tokens_map.json?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer.json?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer.model?download=true
-wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer_config.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/config.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/generation_config.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00001-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00002-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00003-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00004-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00005-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00006-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00007-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00008-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00009-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00010-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00011-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00012-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00013-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00014-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00015-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00016-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00017-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00018-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model-00019-of-00019.safetensors?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/model.safetensors.index.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/special_tokens_map.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer.json?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer.model?download=true
+wget --header="Authorization: Bearer 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" https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/resolve/main/tokenizer_config.json?download=true
 
 # rename the files
 mv 'config.json?download=true' config.json

@@ -8,12 +8,16 @@ import sys
 import argparse
 import logging
 import pandas as pd
+from datasets import load_dataset
+from tqdm import tqdm
+
 
 sys.path.append("mixtral-offloading")
 
+torch.set_default_dtype(torch.bfloat16)
 
 def main():
-    os.chdir("/home/yilegu/fiddler/benchmarks/mixtral_offloading")
+    os.chdir("/home/cc/fiddler/benchmarks/mixtral_offloading")
 
     if args.framework == 'mixtral-offloading':
         logging.info('Using mixtral-offloading')
@@ -24,7 +28,7 @@ def main():
     else:
         raise ValueError(f'Unknown framework: {args.framework}')
 
-    eval(model, args.prefill)
+    eval(model, args.dataset, args.prefill)
 
 
 def init_deepspeed_mii():
@@ -124,22 +128,41 @@ def init_mixtral_offload():
     return model
 
 
-def eval(model, prefill=False):
+def eval(model, dataset, prefill=False):
     import random
     import json
     import time
 
     device = torch.device("cuda:0")
 
-    path_json = '/home/yilegu/fiddler/benchmarks/mixtral_offloading/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
-    with open(path_json, 'r') as f:
-        data = json.load(f)
-    texts = []
-    for d in data:
-        if len(d['conversations']) == 0:
-            continue
-        # the input of the first round
-        texts.append(' '.join(d['conversations'][0]['value'].split()))
+    logging.info(f'evaluating on dataset: {dataset}')
+    if dataset == 'sharegpt':
+        path_json = '/home/yilegu/fiddler/benchmarks/mixtral_offloading/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
+        with open(path_json, 'r') as f:
+            data = json.load(f)
+        texts = []
+        for d in data:
+            if len(d['conversations']) == 0:
+                continue
+            # the input of the first round
+            texts.append(' '.join(d['conversations'][0]['value'].split()))
+    elif dataset == 'lmsys':
+        # Login using e.g. `huggingface-cli login` to access this dataset
+        ds = load_dataset("lmsys/lmsys-chat-1m")
+        ds = ds['train']
+
+        texts = []
+        for d in tqdm(ds):
+            if len(d['conversation']) == 0:
+                continue
+            if d['conversation'][0]['role'] != 'user':
+                continue
+            # the input of the first round
+            texts.append(' '.join(d['conversation'][0]['content'].split()))
+            if len(texts) >= 1000:
+                break
+    else:
+        raise ValueError(f'Unknown dataset: {dataset}')
 
     logging.info(f'n of input {len(texts)}')
     random.seed(0)
@@ -153,7 +176,7 @@ def eval(model, prefill=False):
     f.write('input_token, output_token, batch_size, time, output_token/s\n')
     
 
-    model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    model_name = "mistralai/Mixtral-8x7B-v0.1"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
@@ -161,10 +184,10 @@ def eval(model, prefill=False):
     # input_lengths = [16, 32, 64, 128]
     # output_lengths = [16, 32, 64, 128, 256, 512]
     # input_lengths = [64, 128, 256, 512]
-    input_lengths = [256, 512, 1024, 2048, 4096, 8192]
+    # input_lengths = [32,64,128,256,512,1024]
     # input_lengths = [32, 64, 128, 256, 512]
-    # input_lengths = [8192]
-    output_lengths = [64, 128, 256, 512] if not prefill else [1]
+    input_lengths = [512, 1024, 2048, 4096, 8192]
+    output_lengths = [64,128,256,512,1024] if not prefill else [1]
     # batch_sizes = [1, 2, 4, 8, 16]
     batch_sizes = [1]
     for input_token in input_lengths:
@@ -204,7 +227,7 @@ def eval(model, prefill=False):
                         temperature=0.9,
                         top_p=0.9,
                         pad_token_id=tokenizer.eos_token_id,
-                        return_dict_in_generate=True
+                        return_dict_in_generate=True,
                     )
                     end_time = time.time()
                     time_sum += end_time - start_time
@@ -248,6 +271,13 @@ if __name__ == "__main__":
         default=False,
         help='Whether to test prefill (output token = 1) or decode.'
         )
+    parser.add_argument(
+        '--dataset',
+        type=str,
+        choices=['sharegpt', 'lmsys'],
+        default='sharegpt',
+        help='Which dataset to use for evaluation.'
+    )
 
     args = parser.parse_args()
 
