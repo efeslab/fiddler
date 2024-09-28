@@ -261,9 +261,9 @@ class MixtralBlockSparseTop2MLP(nn.Module):
         self.ffn_dim = config.intermediate_size
         self.hidden_dim = config.hidden_size
 
-        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False, dtype=torch.float16)
-        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False, dtype=torch.float16)
-        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False, dtype=torch.float16)
+        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False, dtype=torch.bfloat16)
+        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False, dtype=torch.bfloat16)
+        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False, dtype=torch.bfloat16)
 
         self.act_fn = ACT2FN[config.hidden_act]
 

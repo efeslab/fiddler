@@ -17,7 +17,7 @@ sys.path.append("mixtral-offloading")
 torch.set_default_dtype(torch.bfloat16)
 
 def main():
-    os.chdir("/home/cc/fiddler/benchmarks/mixtral_offloading")
+    os.chdir("/home/ubuntu/fiddler-Michael/benchmarks/mixtral_offloading")
 
     if args.framework == 'mixtral-offloading':
         logging.info('Using mixtral-offloading')
@@ -83,8 +83,8 @@ def init_mixtral_offload():
     device = torch.device("cuda:0")
 
     ##### Change this to 5 if you have only 12 GB of GPU VRAM #####
-    # offload_per_layer = 4
-    offload_per_layer = 7
+    offload_per_layer = 5
+    # offload_per_layer = 7
     ###############################################################
 
     num_experts = config.num_local_experts
@@ -184,9 +184,9 @@ def eval(model, dataset, prefill=False):
     # input_lengths = [16, 32, 64, 128]
     # output_lengths = [16, 32, 64, 128, 256, 512]
     # input_lengths = [64, 128, 256, 512]
-    # input_lengths = [32,64,128,256,512,1024]
+    input_lengths = [32,64,128,256,512,1024]
     # input_lengths = [32, 64, 128, 256, 512]
-    input_lengths = [512, 1024, 2048, 4096, 8192]
+    # input_lengths = [512, 1024, 2048, 4096, 8192]
     output_lengths = [64,128,256,512,1024] if not prefill else [1]
     # batch_sizes = [1, 2, 4, 8, 16]
     batch_sizes = [1]
