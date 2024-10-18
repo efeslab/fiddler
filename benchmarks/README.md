@@ -19,7 +19,7 @@ Follow these steps to install DeepSpeed packages and run evaluation.
 conda create -n deepspeed python=3.10
 conda activate deepspeed
 conda install -c anaconda mpi4py
-pip install deepspeed-mii accelerate
+pip install deepspeed-mii accelerate pandas datasets
 python3 eval-baseline.py --framework=deepspeed-mii
 ```
 
