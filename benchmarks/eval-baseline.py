@@ -17,7 +17,7 @@ sys.path.append("mixtral-offloading")
 torch.set_default_dtype(torch.bfloat16)
 
 def main():
-    os.chdir("/home/ubuntu/fiddler-Michael/benchmarks/mixtral_offloading")
+    # os.chdir("/home/ubuntu/fiddler-Michael/benchmarks/mixtral_offloading")
 
     if args.framework == 'mixtral-offloading':
         logging.info('Using mixtral-offloading')
@@ -72,7 +72,7 @@ def init_mixtral_offload():
     quantized = False
 
     if not quantized:
-        state_path = "Mixtral-8x7B-Instruct-v0.1"
+        state_path = "/workspace/models--mistralai--Mixtral-8x7B-v0.1/snapshots/ffe1a706bacbd5abddc5ff99432ee38f7e0662fb"
         model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     else:
         state_path = "Mixtral-8x7B-Instruct-v0.1-offloading-demo"
@@ -137,7 +137,7 @@ def eval(model, dataset, prefill=False):
 
     logging.info(f'evaluating on dataset: {dataset}')
     if dataset == 'sharegpt':
-        path_json = '/home/yilegu/fiddler/benchmarks/mixtral_offloading/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
+        path_json = '/workspace/fiddler-Michael/benchmarks/mixtral_offloading/ShareGPT_V3_unfiltered_cleaned_split.json'
         with open(path_json, 'r') as f:
             data = json.load(f)
         texts = []
