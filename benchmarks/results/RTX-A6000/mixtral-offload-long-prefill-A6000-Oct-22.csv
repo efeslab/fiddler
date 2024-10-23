@@ -1,0 +1,5 @@
+input_token, output_token, batch_size, time, output_token/s
+512, 1, 1, 7.51, 0.13
+1024, 1, 1, 6.87, 0.15
+2048, 1, 1, 7.23, 0.14
+4096, 1, 1, 8.43, 0.12
